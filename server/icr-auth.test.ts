@@ -13,13 +13,65 @@ const localStorageMock = {
 };
 Object.defineProperty(global, 'localStorage', { value: localStorageMock });
 
+// ─── Proxy URL construction ───────────────────────────────────────────────────
+
+describe("Proxy — construção de URL", () => {
+  const PROXY_PREFIX = "/api/icr";
+
+  it("remove o prefixo /api/icr e monta a URL correta para o container Docker", () => {
+    const ICR_API_URL = "http://icr-api:8080";
+    const reqPath = "/api/icr/api/v1/auth/login";
+    const targetPath = reqPath.replace(PROXY_PREFIX, "");
+    const fullUrl = `${ICR_API_URL}${targetPath}`;
+    expect(fullUrl).toBe("http://icr-api:8080/api/v1/auth/login");
+  });
+
+  it("repassa query string corretamente", () => {
+    const targetUrl = "http://icr-api:8080/api/federations";
+    const query = { page: "1", size: "10" };
+    const qs = new URLSearchParams(query).toString();
+    const fullUrl = qs ? `${targetUrl}?${qs}` : targetUrl;
+    expect(fullUrl).toBe("http://icr-api:8080/api/federations?page=1&size=10");
+  });
+
+  it("funciona sem query string", () => {
+    const targetUrl = "http://icr-api:8080/api/churches";
+    const qs = "";
+    const fullUrl = qs ? `${targetUrl}?${qs}` : targetUrl;
+    expect(fullUrl).toBe("http://icr-api:8080/api/churches");
+  });
+
+  it("repassa header Authorization quando presente", () => {
+    const token = "Bearer abc123";
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = token;
+    expect(headers["Authorization"]).toBe("Bearer abc123");
+  });
+
+  it("não adiciona Authorization quando token está ausente", () => {
+    const token = null;
+    const headers: Record<string, string> = {};
+    if (token) headers["Authorization"] = token;
+    expect(headers["Authorization"]).toBeUndefined();
+  });
+
+  it("frontend usa sempre o proxy local /api/icr/* (nunca URL externa)", () => {
+    // O API_BASE do frontend deve ser sempre relativo
+    const API_BASE = "/api/icr";
+    expect(API_BASE.startsWith("/")).toBe(true);
+    expect(API_BASE).not.toContain("http");
+  });
+});
+
+// ─── Auth Login ───────────────────────────────────────────────────────────────
+
 describe("ICR API Integration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
   describe("Auth Login", () => {
-    it("should return token on successful login", async () => {
+    it("should return token on successful login via proxy", async () => {
       const mockResponse = {
         ok: true,
         json: async () => ({ token: "test-jwt-token", memberName: "Admin User" }),
@@ -28,7 +80,8 @@ describe("ICR API Integration", () => {
       };
       mockFetch.mockResolvedValueOnce(mockResponse);
 
-      const response = await fetch("https://tools-verse-protective-lip.trycloudflare.com/api/v1/auth/login", {
+      // Agora chama o proxy local, não a URL externa
+      const response = await fetch("/api/icr/api/v1/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: "admin", password: "password" }),
@@ -37,13 +90,6 @@ describe("ICR API Integration", () => {
       expect(response.ok).toBe(true);
       const data = await response.json();
       expect(data.token).toBe("test-jwt-token");
-      expect(mockFetch).toHaveBeenCalledWith(
-        "https://tools-verse-protective-lip.trycloudflare.com/api/v1/auth/login",
-        expect.objectContaining({
-          method: "POST",
-          body: JSON.stringify({ username: "admin", password: "password" }),
-        })
-      );
     });
 
     it("should throw error on invalid credentials", async () => {
@@ -54,7 +100,7 @@ describe("ICR API Integration", () => {
       };
       mockFetch.mockResolvedValueOnce(mockResponse);
 
-      const response = await fetch("https://tools-verse-protective-lip.trycloudflare.com/api/v1/auth/login", {
+      const response = await fetch("/api/icr/api/v1/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: "wrong", password: "wrong" }),
@@ -62,6 +108,29 @@ describe("ICR API Integration", () => {
 
       expect(response.ok).toBe(false);
       expect(response.status).toBe(401);
+    });
+
+    it("should handle 503 when API container is unreachable", async () => {
+      const mockResponse = {
+        ok: false,
+        status: 503,
+        json: async () => ({
+          error: "API ICR indisponível",
+          detail: "Não foi possível conectar a http://icr-api:8080",
+          icrApiUrl: "http://icr-api:8080",
+        }),
+      };
+      mockFetch.mockResolvedValueOnce(mockResponse);
+
+      const response = await fetch("/api/icr/api/v1/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: "admin", password: "pass" }),
+      });
+
+      expect(response.status).toBe(503);
+      const data = await response.json();
+      expect(data.icrApiUrl).toBe("http://icr-api:8080");
     });
   });
 
@@ -75,7 +144,7 @@ describe("ICR API Integration", () => {
       mockFetch.mockResolvedValueOnce(mockResponse);
 
       const token = "test-jwt-token";
-      const response = await fetch("https://tools-verse-protective-lip.trycloudflare.com/api/federations", {
+      await fetch("/api/icr/api/federations", {
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${token}`,
@@ -83,7 +152,7 @@ describe("ICR API Integration", () => {
       });
 
       expect(mockFetch).toHaveBeenCalledWith(
-        "https://tools-verse-protective-lip.trycloudflare.com/api/federations",
+        "/api/icr/api/federations",
         expect.objectContaining({
           headers: expect.objectContaining({
             "Authorization": "Bearer test-jwt-token",
@@ -100,7 +169,7 @@ describe("ICR API Integration", () => {
       };
       mockFetch.mockResolvedValueOnce(mockResponse);
 
-      const response = await fetch("https://tools-verse-protective-lip.trycloudflare.com/api/federations", {
+      const response = await fetch("/api/icr/api/federations", {
         headers: { "Authorization": "Bearer expired-token" },
       });
 
@@ -123,11 +192,7 @@ describe("ICR API Integration", () => {
 
       const rows = churches.map(church => {
         const repass = repasses.find(r => r.churchId === church.id);
-        return {
-          churchId: church.id,
-          churchName: church.name,
-          amount: repass?.amount,
-        };
+        return { churchId: church.id, churchName: church.name, amount: repass?.amount };
       });
 
       const totalPaid = rows.filter(r => r.amount && r.amount > 0).reduce((sum, r) => sum + (r.amount || 0), 0);

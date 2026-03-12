@@ -1,0 +1,64 @@
+# docker-compose.example.yml
+#
+# Exemplo de configuração para rodar o front-end ICR junto com a API
+# em containers Docker na mesma rede.
+#
+# Como usar:
+#   cp docker-compose.example.yml docker-compose.yml
+#   # Edite as variáveis conforme seu ambiente
+#   docker compose up -d
+#
+# Arquitetura:
+#
+#   browser  →  [icr-frontend :3000]  →  /api/icr/*  →  [icr-api :8080]
+#                    (Express proxy)                      (API .NET)
+#
+# O frontend NUNCA expõe a URL da API ao browser. O proxy Express
+# resolve "http://icr-api:8080" pelo nome do serviço na rede Docker.
+
+version: "3.9"
+
+networks:
+  icr-network:
+    driver: bridge
+
+services:
+  # ── API ICR (container externo — ajuste a imagem conforme seu repositório) ──
+  icr-api:
+    image: seu-registry/icr-api:latest   # <-- substitua pela sua imagem
+    container_name: icr-api
+    networks:
+      - icr-network
+    ports:
+      - "8080:8080"   # opcional: expõe para debug local
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      # ... demais variáveis da API .NET
+
+  # ── Front-end ICR (este projeto) ────────────────────────────────────────────
+  icr-frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: icr-frontend
+    networks:
+      - icr-network
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+
+      # ✅ Aponta para o container da API pelo nome do serviço Docker
+      ICR_API_URL: "http://icr-api:8080"
+
+      # Demais variáveis obrigatórias do template
+      DATABASE_URL: "mysql://user:pass@db:3306/icr"
+      JWT_SECRET: "seu-jwt-secret-aqui"
+      VITE_APP_ID: "seu-app-id"
+      OAUTH_SERVER_URL: "https://api.manus.im"
+      OWNER_OPEN_ID: "seu-open-id"
+      BUILT_IN_FORGE_API_URL: ""
+      BUILT_IN_FORGE_API_KEY: ""
+    depends_on:
+      - icr-api

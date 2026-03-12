@@ -7,4 +7,8 @@ export const ENV = {
   isProduction: process.env.NODE_ENV === "production",
   forgeApiUrl: process.env.BUILT_IN_FORGE_API_URL ?? "",
   forgeApiKey: process.env.BUILT_IN_FORGE_API_KEY ?? "",
+  // URL base da API ICR — em Docker, aponta para o container na mesma rede
+  // Ex: http://icr-api:8080  (nome do serviço no docker-compose)
+  // Fallback para a URL pública de desenvolvimento
+  icrApiUrl: process.env.ICR_API_URL ?? "https://tools-verse-protective-lip.trycloudflare.com",
 };

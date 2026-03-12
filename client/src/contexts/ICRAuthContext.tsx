@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-
-const API_BASE = 'https://tools-verse-protective-lip.trycloudflare.com';
+import { API_BASE } from '../lib/api-config';
 
 interface ICRUser {
   id: number;
@@ -41,6 +40,7 @@ export function ICRAuthProvider({ children }: { children: ReactNode }) {
     setIsLoading(true);
     setError(null);
     try {
+      // Chama o proxy local — o Express encaminha para ICR_API_URL/api/v1/auth/login
       const response = await fetch(`${API_BASE}/api/v1/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -48,13 +48,13 @@ export function ICRAuthProvider({ children }: { children: ReactNode }) {
       });
 
       if (!response.ok) {
-        throw new Error('Credenciais inválidas');
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData?.detail || errData?.message || 'Credenciais inválidas');
       }
 
       const data = await response.json();
       const authToken = data.token || data.accessToken || data;
-      
-      // Try to get user info
+
       const userInfo: ICRUser = {
         id: data.id || 0,
         username: username,
@@ -101,5 +101,3 @@ export function useICRAuth() {
   if (!ctx) throw new Error('useICRAuth must be used within ICRAuthProvider');
   return ctx;
 }
-
-export { API_BASE };

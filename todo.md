@@ -31,3 +31,10 @@
 
 ## Testes
 - [x] Testes unitários para autenticação ICR e lógica de repasses (9 testes passando)
+
+## Modularização da API (Docker)
+- [x] Criar variável de ambiente ICR_API_URL para configurar o endpoint da API
+- [x] Configurar proxy reverso no servidor Express (/api/icr/* → ICR_API_URL)
+- [x] Atualizar ICRAuthContext para usar o proxy local
+- [x] Atualizar useICRApi para usar o proxy local
+- [x] Documentar configuração Docker (Dockerfile + docker-compose.example.yml)

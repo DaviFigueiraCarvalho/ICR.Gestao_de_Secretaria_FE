@@ -1,5 +1,16 @@
-import { useICRAuth, API_BASE } from '../contexts/ICRAuthContext';
+import { useICRAuth } from '../contexts/ICRAuthContext';
+import { API_BASE } from '../lib/api-config';
 
+/**
+ * Hook para chamadas autenticadas à API ICR.
+ *
+ * Todas as requisições passam pelo proxy Express local (/api/icr/*).
+ * O servidor encaminha para o container ICR definido por ICR_API_URL.
+ *
+ * Uso:
+ *   const { fetchApi } = useICRApi();
+ *   const data = await fetchApi<Federation[]>('/api/federations');
+ */
 export function useICRApi() {
   const { token, logout } = useICRAuth();
 
@@ -13,6 +24,7 @@ export function useICRApi() {
       headers['Authorization'] = `Bearer ${token}`;
     }
 
+    // Chama sempre o proxy local — nunca a URL externa diretamente
     const response = await fetch(`${API_BASE}${path}`, {
       ...options,
       headers,
@@ -23,12 +35,16 @@ export function useICRApi() {
       throw new Error('Sessão expirada. Faça login novamente.');
     }
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || `Erro ${response.status}`);
+    if (response.status === 503) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.detail || 'API ICR indisponível. Verifique a variável ICR_API_URL.');
     }
 
-    // Handle empty responses
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || errorData.detail || `Erro ${response.status}`);
+    }
+
     const text = await response.text();
     if (!text) return {} as T;
     return JSON.parse(text) as T;
@@ -37,7 +53,8 @@ export function useICRApi() {
   return { fetchApi };
 }
 
-// Types from API
+// ─── Tipos da API ICR ────────────────────────────────────────────────────────
+
 export interface Federation {
   id: number;
   name: string;
