@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import ICRLayout from '../components/ICRLayout';
 import CRUDTable, { Column } from '../components/CRUDTable';
-import { useICRApi, Cell } from '../hooks/useICRApi';
+import { useICRApi, Cell, Church } from '../hooks/useICRApi';
 import { toast } from 'sonner';
 
 interface CelulaForm {
@@ -20,6 +20,7 @@ export default function Celulas() {
   const [editItem, setEditItem] = useState<Cell | null>(null);
   const [form, setForm] = useState<CelulaForm>({ name: '', type: '', churchId: '', responsibleId: '' });
   const [saving, setSaving] = useState(false);
+  const [churches, setChurches] = useState<Church[]>([]);
 
   const load = async () => {
     setIsLoading(true);
@@ -27,6 +28,8 @@ export default function Celulas() {
     try {
       const result = await fetchApi<Cell[]>('/api/cells');
       setData(result);
+      const churchesResult = await fetchApi<Church[]>('/api/churches');
+      setChurches(churchesResult);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar células');
     } finally {
@@ -35,7 +38,14 @@ export default function Celulas() {
   };
 
   useEffect(() => { load(); }, []);
-
+  const loadData = async () => {
+  const [cellsRes, churchesRes] = await Promise.all([
+    fetchApi<Cell[]>('/api/cells'),
+    fetchApi<Church[]>('/api/churches')
+  ]);
+  setData(cellsRes);
+  setChurches(churchesRes);
+};
   const openAdd = () => {
     setEditItem(null);
     setForm({ name: '', type: '', churchId: '', responsibleId: '' });
@@ -136,10 +146,17 @@ export default function Celulas() {
                   placeholder="Tipo da célula" />
               </div>
               <div>
-                <label className="text-white/70 text-sm font-['Nunito'] block mb-1">ID Igreja *</label>
-                <input type="number" value={form.churchId} onChange={e => setForm({ ...form, churchId: e.target.value ? Number(e.target.value) : '' })}
-                  className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                  placeholder="ID da igreja" />
+                <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Igreja *</label>
+                <select 
+                  value={form.churchId} 
+                  onChange={e => setForm({ ...form, churchId: Number(e.target.value) })}
+                  className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white focus:border-[#017158] outline-none"
+                >
+                  <option value="">Selecione uma igreja</option>
+                  {churches.map(c => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="text-white/70 text-sm font-['Nunito'] block mb-1">ID Responsável</label>

@@ -8,6 +8,7 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 
 # Copia manifests e instala dependências
 COPY package.json pnpm-lock.yaml ./
+COPY patches ./patches
 RUN pnpm install --frozen-lockfile
 
 # Copia o restante do código e faz o build

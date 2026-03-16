@@ -64,39 +64,60 @@ export default function Igrejas() {
     setShowModal(true);
   };
 
-  const handleSave = async () => {
-    if (!form.name.trim()) { toast.error('Nome é obrigatório'); return; }
-    if (!form.federationId) { toast.error('Federação é obrigatória'); return; }
-    setSaving(true);
-    try {
-      const body = {
-        name: form.name,
-        federationId: Number(form.federationId),
-        ...(form.ministerId ? { ministerId: Number(form.ministerId) } : {}),
-        address: {
-          zipCode: form.zipCode,
-          street: form.street,
-          number: form.number,
-          city: form.city,
-          state: form.state,
-        },
-      };
-      if (editItem) {
-        await fetchApi(`/api/churches/${editItem.id}`, { method: 'PATCH', body: JSON.stringify(body) });
-        toast.success('Igreja atualizada com sucesso');
-      } else {
-        await fetchApi('/api/churches', { method: 'POST', body: JSON.stringify(body) });
-        toast.success('Igreja criada com sucesso');
-      }
-      setShowModal(false);
-      load();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Erro ao salvar');
-    } finally {
-      setSaving(false);
-    }
-  };
+const handleSave = async () => {
+  // 1. Validações básicas no Front
+  if (!form.name.trim()) { toast.error('Nome é obrigatório'); return; }
+  if (!form.federationId) { toast.error('Federação é obrigatória'); return; }
 
+  // 2. Limpeza do CEP (Remove hífens e pontos) para evitar o erro de 8 dígitos do Backend
+  const cleanZipCode = form.zipCode.replace(/\D/g, '');
+  
+  if (cleanZipCode.length > 0 && cleanZipCode.length !== 8) {
+    toast.error('O CEP deve conter exatamente 8 números');
+    return;
+  }
+
+  setSaving(true);
+  try {
+    // 3. Montagem do body seguindo exatamente o ChurchPatchDTO
+    const body = {
+      name: form.name,
+      federationId: Number(form.federationId),
+      ministerId: form.ministerId ? Number(form.ministerId) : 0,
+      address: {
+        zipCode: cleanZipCode,
+        street: form.street,
+        number: form.number,
+        city: form.city,
+        state: form.state
+      }
+    }; 
+
+    if (editItem) {
+    await fetchApi(`/api/churches/${editItem.id}`, {
+  method: "PATCH",
+  headers: {
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify(body)
+});      toast.success('Igreja atualizada com sucesso');
+    } else {
+      await fetchApi('/api/churches', { 
+        method: 'POST', 
+        body: JSON.stringify(body) 
+      });
+      toast.success('Igreja criada com sucesso');
+    }
+
+    setShowModal(false);
+    await load(); // Recarrega a lista
+  } catch (err) {
+    console.error("Erro detalhado:", err);
+    toast.error(err instanceof Error ? err.message : 'Erro ao salvar');
+  } finally {
+    setSaving(false);
+  }
+};
   const handleDelete = async (item: Church) => {
     await fetchApi(`/api/churches/${item.id}`, { method: 'DELETE' });
     load();

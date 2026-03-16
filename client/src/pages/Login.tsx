@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { useICRAuth } from '../contexts/ICRAuthContext';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
+import icrLogo from '../assets/icr-logo.svg';
 
-const ICR_LOGO = 'https://d2xsxph8kpxj0f.cloudfront.net/310519663338223194/Xu9JZviDeGF59Vvrii3Z6h/icr-logo_86d3ef0d.svg';
+const ICR_LOGO = icrLogo;
 
 export default function Login() {
   const [username, setUsername] = useState('');
@@ -36,7 +37,6 @@ export default function Login() {
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
           <img src={ICR_LOGO} alt="ICR Logo" className="w-32 h-32 object-contain mb-4" />
-          <h1 className="text-[#017158] text-3xl font-bold font-['Nunito'] tracking-widest">ICR</h1>
           <p className="text-white/50 text-xs font-['Nunito'] text-center mt-1">
             FEDERAÇÃO<br />IGREJA CRISTÃ REFORMADA AVIVALISTA DO BRASIL
           </p>

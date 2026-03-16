@@ -38,14 +38,14 @@ icrProxyRouter.all(`${PROXY_PREFIX}/*`, async (req: Request, res: Response) => {
   }
 
   const config: AxiosRequestConfig = {
-    method: req.method as AxiosRequestConfig["method"],
-    url: fullUrl,
-    headers: forwardHeaders,
-    data: ["POST", "PUT", "PATCH"].includes(req.method) ? req.body : undefined,
-    // Não lança exceção para status de erro HTTP (4xx/5xx) — repassa ao cliente
-    validateStatus: () => true,
-    timeout: 30_000,
-  };
+  method: req.method as AxiosRequestConfig["method"],
+  url: fullUrl,
+  headers: forwardHeaders,
+  // Garante que o body seja enviado corretamente
+  data: req.method !== 'GET' ? req.body : undefined, 
+  validateStatus: () => true,
+  timeout: 60000, // Aumentado para 60s para operações pesadas de DB
+};
 
   try {
     const apiResponse = await axios(config);

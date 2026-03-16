@@ -2,8 +2,9 @@ import { ReactNode, useState } from 'react';
 import { Link, useLocation } from 'wouter';
 import { useICRAuth } from '../contexts/ICRAuthContext';
 import { toast } from 'sonner';
+import icrLogo from '../assets/icr-logo.svg';
 
-const ICR_LOGO = 'https://d2xsxph8kpxj0f.cloudfront.net/310519663338223194/Xu9JZviDeGF59Vvrii3Z6h/icr-logo_86d3ef0d.svg';
+const ICR_LOGO = icrLogo;
 
 interface NavItem {
   icon: string;

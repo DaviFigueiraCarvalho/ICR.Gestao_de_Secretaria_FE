@@ -10,5 +10,5 @@ export const ENV = {
   // URL base da API ICR — em Docker, aponta para o container na mesma rede
   // Ex: http://icr-api:8080  (nome do serviço no docker-compose)
   // Fallback para a URL pública de desenvolvimento
-  icrApiUrl: process.env.ICR_API_URL ?? "https://tools-verse-protective-lip.trycloudflare.com",
+  icrApiUrl: process.env.ICR_API_URL ?? "http://localhost:8080",
 };

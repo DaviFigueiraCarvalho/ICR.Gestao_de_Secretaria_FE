@@ -89,18 +89,20 @@ export default function Repasses() {
   const paidCount = rows.filter(r => r.amount && r.amount > 0).length;
   const pendingCount = rows.filter(r => !r.amount || r.amount === 0).length;
 
-  const getRowColor = (row: RepassRow): string => {
-    if (!row.amount || row.amount === 0) return 'bg-red-900/40 hover:bg-red-900/50';
-    if (row.amount >= 200) return 'bg-green-900/40 hover:bg-green-900/50';
-    if (row.amount >= 150) return 'bg-yellow-900/40 hover:bg-yellow-900/50';
-    return 'bg-yellow-900/20 hover:bg-yellow-900/30';
+ const getRowColor = (row: RepassRow): string => {
+    const val = row.amount || 0;
+    if (val > 150) return 'bg-green-900/40 hover:bg-green-900/50';
+    if (val === 150) return 'bg-yellow-900/40 hover:bg-yellow-900/50';
+    return 'bg-red-900/40 hover:bg-red-900/50'; // Menor que 150
   };
 
   const getRowTextColor = (row: RepassRow): string => {
-    if (!row.amount || row.amount === 0) return 'text-red-200';
-    if (row.amount >= 200) return 'text-green-200';
-    return 'text-yellow-200';
+    const val = row.amount || 0;
+    if (val > 150) return 'text-green-200';
+    if (val === 150) return 'text-yellow-200';
+    return 'text-red-200'; // Menor que 150
   };
+  
 
   const openAdd = () => {
     setEditItem(null);
@@ -332,11 +334,11 @@ export default function Repasses() {
             <span className="text-white/40 text-xs font-['Nunito']">Legenda:</span>
             <div className="flex items-center gap-1.5">
               <div className="w-3 h-3 rounded bg-green-600"></div>
-              <span className="text-white/50 text-xs font-['Nunito']">Pago (≥ R$ 200)</span>
+              <span className="text-white/50 text-xs font-['Nunito']">Repasse Maior que o Mínimo (&gt; R$ 150)</span>
             </div>
             <div className="flex items-center gap-1.5">
               <div className="w-3 h-3 rounded bg-yellow-600"></div>
-              <span className="text-white/50 text-xs font-['Nunito']">Parcial (≥ R$ 150)</span>
+              <span className="text-white/50 text-xs font-['Nunito']">Repasse Mínimo (= R$ 150)</span>
             </div>
             <div className="flex items-center gap-1.5">
               <div className="w-3 h-3 rounded bg-red-700"></div>
