@@ -31,7 +31,6 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/client/dist ./client/dist
 
 ENV NODE_ENV=production
 ENV PORT=3000
