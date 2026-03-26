@@ -29,12 +29,16 @@ icrProxyRouter.all(`${PROXY_PREFIX}/*`, async (req: Request, res: Response) => {
   const queryString = new URLSearchParams(req.query as Record<string, string>).toString();
   const fullUrl = queryString ? `${targetUrl}?${queryString}` : targetUrl;
 
+  console.log(`🔄 [ICR Proxy] ${req.method} ${req.path} -> ${fullUrl}`);
+  console.log(`🔄 [ICR Proxy] ICR_API_URL: ${ENV.icrApiUrl}`);
+
   // Monta os headers — repassa Authorization se existir, remove headers de host
   const forwardHeaders: Record<string, string> = {
     "Content-Type": req.headers["content-type"] ?? "application/json",
   };
   if (req.headers["authorization"]) {
     forwardHeaders["Authorization"] = req.headers["authorization"] as string;
+    console.log(`🔄 [ICR Proxy] Forwarding Authorization header`);
   }
 
   const config: AxiosRequestConfig = {
@@ -50,19 +54,25 @@ icrProxyRouter.all(`${PROXY_PREFIX}/*`, async (req: Request, res: Response) => {
   try {
     const apiResponse = await axios(config);
 
+    console.log(`🔄 [ICR Proxy] Response status: ${apiResponse.status} ${apiResponse.statusText}`);
+    console.log(`🔄 [ICR Proxy] Response headers:`, apiResponse.headers);
+
     // Repassa o status e o body da API para o frontend
     res.status(apiResponse.status).json(apiResponse.data);
   } catch (err) {
     const axiosErr = err as AxiosError;
-    console.error(`[ICR Proxy] Erro ao chamar ${fullUrl}:`, axiosErr.message);
+    console.error(`❌ [ICR Proxy] Erro ao chamar ${fullUrl}:`, axiosErr.message);
+    console.error(`❌ [ICR Proxy] Error details:`, axiosErr.response?.status, axiosErr.response?.statusText);
 
     if (axiosErr.code === "ECONNREFUSED" || axiosErr.code === "ENOTFOUND") {
+      console.error(`❌ [ICR Proxy] Container ICR indisponível: ${ENV.icrApiUrl}`);
       res.status(503).json({
         error: "API ICR indisponível",
         detail: `Não foi possível conectar a ${ENV.icrApiUrl}. Verifique se o container está rodando e se ICR_API_URL está correto.`,
         icrApiUrl: ENV.icrApiUrl,
       });
     } else {
+      console.error(`❌ [ICR Proxy] Erro interno:`, axiosErr.message);
       res.status(500).json({
         error: "Erro interno no proxy",
         detail: axiosErr.message,

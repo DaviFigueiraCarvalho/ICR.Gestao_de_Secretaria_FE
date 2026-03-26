@@ -11,10 +11,21 @@ import { API_BASE } from '../lib/api-config';
  *   const { fetchApi } = useICRApi();
  *   const data = await fetchApi<Federation[]>('/api/federations');
  */
+function normalizeApiPath(path: string): string {
+  if (!path || path === '/') return '/';
+  
+  // Normalize query parameters: pageSize → size
+  let normalized = path.replace(/([?&])pageSize=(\d+)/g, '$1size=$2');
+  
+  // Ensure path starts with '/'
+  return normalized.startsWith('/') ? normalized : '/' + normalized;
+}
+
 export function useICRApi() {
   const { token, logout } = useICRAuth();
 
   const fetchApi = async <T>(path: string, options?: RequestInit): Promise<T> => {
+    const normalizedPath = normalizeApiPath(path);
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...(options?.headers as Record<string, string>),
@@ -25,7 +36,7 @@ export function useICRApi() {
     }
 
     // Chama sempre o proxy local — nunca a URL externa diretamente
-    const response = await fetch(`${API_BASE}${path}`, {
+    const response = await fetch(`${API_BASE}${normalizedPath}`, {
       ...options,
       headers,
     });

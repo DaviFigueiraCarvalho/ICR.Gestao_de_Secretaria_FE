@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useICRAuth } from '../contexts/ICRAuthContext';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
@@ -10,8 +10,15 @@ export default function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const { login } = useICRAuth();
+  const { login, isAuthenticated, isLoading: authLoading } = useICRAuth();
   const [, navigate] = useLocation();
+
+  // Se já está autenticado, vai para home; evita loop de login
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) {
+      navigate('/');
+    }
+  }, [authLoading, isAuthenticated, navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,7 +30,7 @@ export default function Login() {
     try {
       await login(username, password);
       toast.success('Login realizado com sucesso!');
-      navigate('/');
+      // Navegação controlada pelo useEffect quando isAuthenticated se torna true
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao fazer login');
     } finally {

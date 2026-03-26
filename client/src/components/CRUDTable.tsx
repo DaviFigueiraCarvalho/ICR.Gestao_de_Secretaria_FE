@@ -1,5 +1,7 @@
 import { useState, ReactNode } from 'react';
 import { toast } from 'sonner';
+import { isPermissionError } from '@/lib/utils';
+import PermissionDeniedError from './PermissionDeniedError';
 
 export interface Column<T> {
   key: keyof T | string;
@@ -121,12 +123,16 @@ export default function CRUDTable<T extends { id: number }>({
             </div>
           </div>
         ) : error ? (
-          <div className="flex items-center justify-center py-16">
-            <div className="flex flex-col items-center gap-3 text-center">
-              <span className="material-icons text-red-400 text-3xl">error_outline</span>
-              <p className="text-white/60 font-['Nunito'] text-sm">{error}</p>
+          isPermissionError(new Error(error)) ? (
+            <PermissionDeniedError message={error} compact={true} />
+          ) : (
+            <div className="flex items-center justify-center py-16">
+              <div className="flex flex-col items-center gap-3 text-center">
+                <span className="material-icons text-red-400 text-3xl">error_outline</span>
+                <p className="text-white/60 font-['Nunito'] text-sm">{error}</p>
+              </div>
             </div>
-          </div>
+          )
         ) : filteredData.length === 0 ? (
           <div className="flex items-center justify-center py-16">
             <div className="flex flex-col items-center gap-3 text-center">

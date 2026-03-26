@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import ICRLayout from '../components/ICRLayout';
 import CRUDTable, { Column } from '../components/CRUDTable';
-import { useICRApi, Family } from '../hooks/useICRApi';
+import SmartSelect from '../components/SmartSelect';
+import { useICRApi, Family, Church, Cell, Member } from '../hooks/useICRApi';
 import { toast } from 'sonner';
 
 interface FamiliaForm {
@@ -23,6 +24,28 @@ export default function Familias() {
   const [form, setForm] = useState<FamiliaForm>({ name: '', churchId: '', cellId: '', manId: '', womanId: '', weddingDate: '' });
   const [saving, setSaving] = useState(false);
   const [page, setPage] = useState(1);
+  const [churches, setChurches] = useState<Church[]>([]);
+  const [cells, setCells] = useState<Cell[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
+
+  useEffect(() => {
+    const loadLookups = async () => {
+      try {
+        const [churchesRes, cellsRes, membersRes] = await Promise.all([
+          fetchApi<Church[]>('/api/churches'),
+          fetchApi<Cell[]>('/api/cells'),
+          fetchApi<Member[]>('/api/members'),
+        ]);
+        setChurches(churchesRes);
+        setCells(cellsRes);
+        setMembers(membersRes);
+      } catch (err) {
+        console.error('Erro ao carregar dados auxiliares:', err);
+      }
+    };
+
+    loadLookups();
+  }, [fetchApi]);
 
   const load = async () => {
     setIsLoading(true);
@@ -142,30 +165,35 @@ export default function Familias() {
                   placeholder="Nome da família" />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-white/70 text-sm font-['Nunito'] block mb-1">ID Igreja *</label>
-                  <input type="number" value={form.churchId} onChange={e => setF('churchId', e.target.value ? Number(e.target.value) : '')}
-                    className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                    placeholder="ID da igreja" />
-                </div>
-                <div>
-                  <label className="text-white/70 text-sm font-['Nunito'] block mb-1">ID Célula</label>
-                  <input type="number" value={form.cellId} onChange={e => setF('cellId', e.target.value ? Number(e.target.value) : '')}
-                    className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                    placeholder="ID da célula" />
-                </div>
-                <div>
-                  <label className="text-white/70 text-sm font-['Nunito'] block mb-1">ID Marido</label>
-                  <input type="number" value={form.manId} onChange={e => setF('manId', e.target.value ? Number(e.target.value) : '')}
-                    className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                    placeholder="ID do membro" />
-                </div>
-                <div>
-                  <label className="text-white/70 text-sm font-['Nunito'] block mb-1">ID Esposa</label>
-                  <input type="number" value={form.womanId} onChange={e => setF('womanId', e.target.value ? Number(e.target.value) : '')}
-                    className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                    placeholder="ID do membro" />
-                </div>
+                <SmartSelect
+                  label="Igreja *"
+                  selectedId={form.churchId}
+                  onSelect={id => setF('churchId', id)}
+                  items={churches.map(c => ({ id: c.id, name: c.name }))}
+                  placeholder="Selecione uma igreja"
+                  required
+                />
+                <SmartSelect
+                  label="Célula"
+                  selectedId={form.cellId}
+                  onSelect={id => setF('cellId', id)}
+                  items={cells.map(c => ({ id: c.id, name: c.name }))}
+                  placeholder="Selecione uma célula"
+                />
+                <SmartSelect
+                  label="Marido"
+                  selectedId={form.manId}
+                  onSelect={id => setF('manId', id)}
+                  items={members.map(m => ({ id: m.id, name: m.name }))}
+                  placeholder="Selecione um membro"
+                />
+                <SmartSelect
+                  label="Esposa"
+                  selectedId={form.womanId}
+                  onSelect={id => setF('womanId', id)}
+                  items={members.map(m => ({ id: m.id, name: m.name }))}
+                  placeholder="Selecione um membro"
+                />
               </div>
               <div>
                 <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Data de Casamento</label>

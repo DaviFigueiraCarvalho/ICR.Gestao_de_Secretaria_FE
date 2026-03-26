@@ -30,6 +30,10 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 }
 
 async function startServer() {
+  console.log("🚀 Starting server...");
+  console.log(`🔗 ICR_API_URL: ${ENV.icrApiUrl}`);
+  console.log(`🔗 NODE_ENV: ${ENV.isProduction ? 'production' : 'development'}`);
+
   const app = express();
   const server = createServer(app);
 

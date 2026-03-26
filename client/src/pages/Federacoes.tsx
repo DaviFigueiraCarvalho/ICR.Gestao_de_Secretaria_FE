@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import ICRLayout from '../components/ICRLayout';
 import CRUDTable, { Column } from '../components/CRUDTable';
-import { useICRApi, Federation } from '../hooks/useICRApi';
+import SmartSelect from '../components/SmartSelect';
+import { useICRApi, Federation, Member } from '../hooks/useICRApi';
 import { toast } from 'sonner';
 
 interface FederacaoForm {
@@ -18,13 +19,18 @@ export default function Federacoes() {
   const [editItem, setEditItem] = useState<Federation | null>(null);
   const [form, setForm] = useState<FederacaoForm>({ name: '', ministerId: '' });
   const [saving, setSaving] = useState(false);
+  const [members, setMembers] = useState<Member[]>([]);
 
   const load = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await fetchApi<Federation[]>('/api/federations');
-      setData(result);
+      const [federationsResult, membersResult] = await Promise.all([
+        fetchApi<Federation[]>('/api/federations'),
+        fetchApi<Member[]>('/api/members'),
+      ]);
+      setData(federationsResult);
+      setMembers(membersResult);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar federações');
     } finally {
@@ -131,16 +137,13 @@ export default function Federacoes() {
                   placeholder="Nome da federação"
                 />
               </div>
-              <div>
-                <label className="text-white/70 text-sm font-['Nunito'] block mb-1">ID do Ministro</label>
-                <input
-                  type="number"
-                  value={form.ministerId}
-                  onChange={(e) => setForm({ ...form, ministerId: e.target.value ? Number(e.target.value) : '' })}
-                  className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] transition-colors"
-                  placeholder="ID do ministro responsável"
-                />
-              </div>
+              <SmartSelect
+                label="Ministro"
+                selectedId={form.ministerId}
+                onSelect={(id) => setForm({ ...form, ministerId: id })}
+                items={members.map((m) => ({ id: m.id, name: m.name }))}
+                placeholder="Selecione um ministro"
+              />
             </div>
 
             <div className="flex gap-3 justify-end mt-6">

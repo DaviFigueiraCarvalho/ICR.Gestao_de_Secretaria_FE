@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import ICRLayout from '../components/ICRLayout';
 import CRUDTable, { Column } from '../components/CRUDTable';
-import { useICRApi, Church } from '../hooks/useICRApi';
+import SmartSelect from '../components/SmartSelect';
+import { useICRApi, Church, Federation, Minister } from '../hooks/useICRApi';
+import { useViaCEP } from '../hooks/useViaCEP';
 import { toast } from 'sonner';
 
 interface IgrejaForm {
@@ -17,6 +19,7 @@ interface IgrejaForm {
 
 export default function Igrejas() {
   const { fetchApi } = useICRApi();
+  const { fetchCEP, loading: cepLoading, error: cepError } = useViaCEP();
   const [data, setData] = useState<Church[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -27,17 +30,45 @@ export default function Igrejas() {
     zipCode: '', street: '', number: '', city: '', state: '',
   });
   const [saving, setSaving] = useState(false);
+  const [federations, setFederations] = useState<Federation[]>([]);
+  const [ministers, setMinisters] = useState<Minister[]>([]);
 
   const load = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await fetchApi<Church[]>('/api/churches');
-      setData(result);
+      const [churchesResult, federationsResult, ministersResult] = await Promise.all([
+        fetchApi<Church[]>('/api/churches'),
+        fetchApi<Federation[]>('/api/federations'),
+        fetchApi<Minister[]>('/api/ministers'),
+      ]);
+      setData(churchesResult);
+      setFederations(federationsResult);
+      setMinisters(ministersResult);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar igrejas');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleCEPChange = async (value: string) => {
+    setForm(prev => ({ ...prev, zipCode: value }));
+    
+    // Autocomplete quando atingir 8 dígitos
+    const cleanCEP = value.replace(/\D/g, '');
+    if (cleanCEP.length === 8) {
+      const cepData = await fetchCEP(value);
+      if (cepData) {
+        setForm(prev => ({
+          ...prev,
+          street: cepData.street,
+          city: cepData.city,
+          state: cepData.state,
+          // Mantém o número como estava
+        }));
+        toast.success('Endereço preenchido automaticamente');
+      }
     }
   };
 
@@ -171,28 +202,37 @@ const handleSave = async () => {
                     className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                     placeholder="Nome da igreja" />
                 </div>
-                <div>
-                  <label className="text-white/70 text-sm font-['Nunito'] block mb-1">ID Federação *</label>
-                  <input type="number" value={form.federationId} onChange={e => setF('federationId', e.target.value ? Number(e.target.value) : '')}
-                    className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                    placeholder="ID da federação" />
-                </div>
-                <div>
-                  <label className="text-white/70 text-sm font-['Nunito'] block mb-1">ID Ministro</label>
-                  <input type="number" value={form.ministerId} onChange={e => setF('ministerId', e.target.value ? Number(e.target.value) : '')}
-                    className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                    placeholder="ID do ministro" />
-                </div>
+                <SmartSelect
+                  label="Federação *"
+                  selectedId={form.federationId}
+                  onSelect={(id) => setF('federationId', id)}
+                  items={federations.map((f) => ({ id: f.id, name: f.name }))}
+                  placeholder="Selecione uma federação"
+                  required
+                />
+                <SmartSelect
+                  label="Ministro"
+                  selectedId={form.ministerId}
+                  onSelect={(id) => setF('ministerId', id)}
+                  items={ministers.map((m) => ({ id: m.id, name: m.memberName || m.id.toString() }))}
+                  placeholder="Selecione um ministro"
+                />
               </div>
 
               <div className="border-t border-white/10 pt-4">
                 <p className="text-white/50 text-xs font-['Nunito'] mb-3 uppercase tracking-wider">Endereço</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-white/70 text-sm font-['Nunito'] block mb-1">CEP</label>
-                    <input type="text" value={form.zipCode} onChange={e => setF('zipCode', e.target.value)}
-                      className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                      placeholder="00000-000" />
+                    <label className="text-white/70 text-sm font-['Nunito'] block mb-1">CEP {cepLoading && <span className="text-[#017158] text-xs">buscando...</span>}</label>
+                    <input 
+                      type="text" 
+                      value={form.zipCode} 
+                      onChange={e => handleCEPChange(e.target.value)}
+                      disabled={cepLoading}
+                      className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                      placeholder="00000-000" 
+                    />
+                    {cepError && <p className="text-red-400 text-xs mt-1">{cepError}</p>}
                   </div>
                   <div>
                     <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Número</label>

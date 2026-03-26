@@ -53,13 +53,41 @@ export function ICRAuthProvider({ children }: { children: ReactNode }) {
       }
 
       const data = await response.json();
-      const authToken = data.token || data.accessToken || data;
 
+      // Se a API colocar token no header Authorization, usa isso primeiro
+      const headerAuth = response.headers.get('authorization') || response.headers.get('Authorization');
+      const headerToken = headerAuth ? headerAuth.replace(/^Bearer\s+/i, '') : undefined;
+
+      // Suporte a diferentes formatos de resposta da API
+      let rawToken =
+        headerToken ||
+        data?.token ||
+        data?.accessToken ||
+        data?.access_token ||
+        data?.jwt ||
+        data?.authToken ||
+        data?.data?.token ||
+        data?.data?.accessToken ||
+        data?.data?.access_token ||
+        data;
+
+      // Se retornar string com Bearer, remove prefixo
+      if (typeof rawToken === 'string' && rawToken.match(/^Bearer\s+/i)) {
+        rawToken = rawToken.replace(/^Bearer\s+/i, '');
+      }
+
+      if (!rawToken || typeof rawToken !== 'string') {
+        throw new Error('Token de autenticação inválido recebido da API.');
+      }
+
+      const authToken = rawToken;
+
+      const userData = data?.user || data?.data || data;
       const userInfo: ICRUser = {
-        id: data.id || 0,
+        id: userData?.id || 0,
         username: username,
-        memberName: data.memberName || data.name || username,
-        scope: data.scope || 'user',
+        memberName: userData?.memberName || userData?.name || username,
+        scope: userData?.scope || 'user',
       };
 
       setToken(authToken);

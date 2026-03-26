@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import ICRLayout from '../components/ICRLayout';
 import { useICRApi, DashboardNational } from '../hooks/useICRApi';
+import { isPermissionError } from '@/lib/utils';
+import PermissionDeniedError from '../components/PermissionDeniedError';
 
 interface StatCard {
   label: string;
@@ -88,6 +90,13 @@ export default function Home() {
   }
 
   if (error) {
+    if (isPermissionError(new Error(error))) {
+      return (
+        <ICRLayout>
+          <PermissionDeniedError message={error} />
+        </ICRLayout>
+      );
+    }
     return (
       <ICRLayout>
         <div className="flex items-center justify-center h-64">

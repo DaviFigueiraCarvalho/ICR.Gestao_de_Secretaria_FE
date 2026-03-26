@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import ICRLayout from '../components/ICRLayout';
 import CRUDTable, { Column } from '../components/CRUDTable';
-import { useICRApi, Cell, Church } from '../hooks/useICRApi';
+import SmartSelect from '../components/SmartSelect';
+import { useICRApi, Cell, Church, Member } from '../hooks/useICRApi';
 import { toast } from 'sonner';
 
 interface CelulaForm {
@@ -21,15 +22,20 @@ export default function Celulas() {
   const [form, setForm] = useState<CelulaForm>({ name: '', type: '', churchId: '', responsibleId: '' });
   const [saving, setSaving] = useState(false);
   const [churches, setChurches] = useState<Church[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
 
   const load = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await fetchApi<Cell[]>('/api/cells');
-      setData(result);
-      const churchesResult = await fetchApi<Church[]>('/api/churches');
+      const [cellsResult, churchesResult, membersResult] = await Promise.all([
+        fetchApi<Cell[]>('/api/cells'),
+        fetchApi<Church[]>('/api/churches'),
+        fetchApi<Member[]>('/api/members'),
+      ]);
+      setData(cellsResult);
       setChurches(churchesResult);
+      setMembers(membersResult);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar células');
     } finally {
@@ -158,12 +164,13 @@ export default function Celulas() {
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="text-white/70 text-sm font-['Nunito'] block mb-1">ID Responsável</label>
-                <input type="number" value={form.responsibleId} onChange={e => setForm({ ...form, responsibleId: e.target.value ? Number(e.target.value) : '' })}
-                  className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                  placeholder="ID do responsável" />
-              </div>
+              <SmartSelect
+                label="Responsável"
+                selectedId={form.responsibleId}
+                onSelect={(id) => setForm({ ...form, responsibleId: id })}
+                items={members.map((m) => ({ id: m.id, name: m.name }))}
+                placeholder="Selecione um responsável"
+              />
             </div>
 
             <div className="flex gap-3 justify-end mt-6">

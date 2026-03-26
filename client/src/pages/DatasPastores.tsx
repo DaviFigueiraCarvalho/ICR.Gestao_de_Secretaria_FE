@@ -1,17 +1,30 @@
 import { useEffect, useState } from 'react';
 import ICRLayout from '../components/ICRLayout';
 import { useICRApi } from '../hooks/useICRApi';
+import { isPermissionError } from '@/lib/utils';
+import PermissionDeniedError from '../components/PermissionDeniedError';
 
 interface MinisterBirthday {
+  id?: number;
   name: string;
   type: string;
-  memberWifeName: string;
-  birthday: string;
+  memberWifeName?: string;
+  birthday?: string;
+  date?: string;
+  weddingDate?: string;
 }
+
+type TabType = 'all' | 'birthday' | 'wedding';
 
 const MONTHS = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
+];
+
+const TABS: { id: TabType; label: string; type?: string }[] = [
+  { id: 'all', label: 'Todas as Datas' },
+  { id: 'birthday', label: 'Aniversários', type: 'birthday' },
+  { id: 'wedding', label: 'Casamentos', type: 'wedding' },
 ];
 
 export default function DatasPastores() {
@@ -20,13 +33,30 @@ export default function DatasPastores() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth() + 1);
+  const [activeTab, setActiveTab] = useState<TabType>('all');
 
-  const load = async (month: number) => {
+  const load = async (month: number, tab: TabType) => {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await fetchApi<MinisterBirthday[]>(`/api/ministers/birthdays?month=${month}`);
-      setData(Array.isArray(result) ? result : []);
+      let result: MinisterBirthday[] = [];
+
+      if (tab === 'all') {
+        // Carregar todos os tipos
+        const [birthdays, weddings] = await Promise.all([
+          fetchApi<MinisterBirthday[]>(`/api/ministers/birthdays/month/${month}`).catch(() => []),
+          fetchApi<MinisterBirthday[]>(`/api/ministers/weddings/month/${month}`).catch(() => []),
+        ]);
+        result = [...(Array.isArray(birthdays) ? birthdays : []), ...(Array.isArray(weddings) ? weddings : [])];
+      } else if (tab === 'birthday') {
+        const response = await fetchApi<MinisterBirthday[]>(`/api/ministers/birthdays/month/${month}`);
+        result = Array.isArray(response) ? response : [];
+      } else if (tab === 'wedding') {
+        const response = await fetchApi<MinisterBirthday[]>(`/api/ministers/weddings/month/${month}`);
+        result = Array.isArray(response) ? response : [];
+      }
+
+      setData(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar datas');
     } finally {
@@ -34,97 +64,116 @@ export default function DatasPastores() {
     }
   };
 
-  useEffect(() => { load(selectedMonth); }, [selectedMonth]);
+  useEffect(() => {
+    load(selectedMonth, activeTab);
+  }, [selectedMonth, activeTab]);
 
   const getTypeLabel = (type: string) => {
     const types: Record<string, string> = {
       'BIRTHDAY': 'Aniversário',
+      'birthday': 'Aniversário',
       'WEDDING': 'Casamento',
-      'ORDINATION': 'Ordenação',
+      'wedding': 'Casamento',
     };
     return types[type] || type;
   };
 
   const getTypeColor = (type: string) => {
-    const colors: Record<string, string> = {
+    const types: Record<string, string> = {
       'BIRTHDAY': 'bg-blue-500/20 text-blue-400',
+      'birthday': 'bg-blue-500/20 text-blue-400',
       'WEDDING': 'bg-pink-500/20 text-pink-400',
-      'ORDINATION': 'bg-[#017158]/20 text-[#017158]',
+      'wedding': 'bg-pink-500/20 text-pink-400',
     };
-    return colors[type] || 'bg-white/10 text-white/60';
+    return types[type] || 'bg-gray-500/20 text-gray-400';
   };
 
-  const getTypeIcon = (type: string) => {
-    const icons: Record<string, string> = {
-      'BIRTHDAY': 'cake',
-      'WEDDING': 'favorite',
-      'ORDINATION': 'military_tech',
-    };
-    return icons[type] || 'event';
-  };
+  if (error && !isLoading) {
+    if (isPermissionError(new Error(error))) {
+      return (
+        <ICRLayout title="Datas de Pastores">
+          <PermissionDeniedError message={error} />
+        </ICRLayout>
+      );
+    }
+    return (
+      <ICRLayout title="Datas de Pastores">
+        <div className="flex items-center justify-center h-64">
+          <div className="flex flex-col items-center gap-3 text-center">
+            <span className="material-icons text-red-400 text-4xl">error_outline</span>
+            <p className="text-white/60 font-['Nunito']">{error}</p>
+          </div>
+        </div>
+      </ICRLayout>
+    );
+  }
 
   return (
-    <ICRLayout title="Datas Pastores">
-      {/* Month selector */}
-      <div className="flex gap-2 flex-wrap mb-6">
-        {MONTHS.map((month, idx) => (
+    <ICRLayout title="Datas de Pastores">
+      {/* Seletor de Mês */}
+      <div className="mb-6 flex items-center gap-4">
+        <label className="text-white/70 font-['Nunito'] text-sm">Mês:</label>
+        <select
+          value={selectedMonth}
+          onChange={(e) => setSelectedMonth(Number(e.target.value))}
+          className="bg-[#2b2b2b] border border-white/20 rounded-lg px-4 py-2 text-white font-['Nunito'] focus:outline-none focus:border-[#017158]"
+        >
+          {MONTHS.map((month, idx) => (
+            <option key={idx} value={idx + 1}>
+              {month}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Abas */}
+      <div className="flex gap-2 mb-6 border-b border-white/10">
+        {TABS.map((tab) => (
           <button
-            key={idx}
-            onClick={() => setSelectedMonth(idx + 1)}
-            className={`px-3 py-1.5 rounded-lg text-sm font-['Nunito'] font-medium transition-colors ${
-              selectedMonth === idx + 1
-                ? 'bg-[#017158] text-white'
-                : 'bg-[#2b2b2b] text-white/60 hover:text-white hover:bg-[#2b2b2b]/80'
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id)}
+            className={`px-4 py-3 font-['Nunito'] font-medium transition-colors ${ activeTab === tab.id
+              ? 'text-[#017158] border-b-2 border-[#017158]'
+              : 'text-white/60 hover:text-white'
             }`}
           >
-            {month}
+            {tab.label}
           </button>
         ))}
       </div>
 
-      {/* Content */}
+      {/* Conteúdo */}
       {isLoading ? (
-        <div className="flex items-center justify-center h-48">
+        <div className="flex items-center justify-center h-64">
           <div className="flex flex-col items-center gap-3">
-            <span className="material-icons animate-spin text-[#017158] text-3xl">refresh</span>
-            <p className="text-white/50 font-['Nunito'] text-sm">Carregando...</p>
-          </div>
-        </div>
-      ) : error ? (
-        <div className="flex items-center justify-center h-48">
-          <div className="flex flex-col items-center gap-3 text-center">
-            <span className="material-icons text-red-400 text-3xl">error_outline</span>
-            <p className="text-white/60 font-['Nunito'] text-sm">{error}</p>
+            <span className="material-icons animate-spin text-[#017158] text-4xl">refresh</span>
+            <p className="text-white/60 font-['Nunito']">Carregando...</p>
           </div>
         </div>
       ) : data.length === 0 ? (
-        <div className="bg-[#2b2b2b] rounded-xl p-12 flex flex-col items-center gap-3">
-          <span className="material-icons text-white/20 text-5xl">event_busy</span>
-          <p className="text-white/40 font-['Nunito']">
-            Nenhuma data especial em {MONTHS[selectedMonth - 1]}
-          </p>
+        <div className="flex items-center justify-center h-64">
+          <p className="text-white/40 font-['Nunito']">Nenhuma data encontrada para {MONTHS[selectedMonth - 1]}</p>
         </div>
       ) : (
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4">
           {data.map((item, idx) => (
-            <div key={idx} className="bg-[#2b2b2b] rounded-xl p-4 flex items-start gap-3">
-              <div className={`p-2 rounded-lg ${getTypeColor(item.type)}`}>
-                <span className="material-icons text-[20px]">{getTypeIcon(item.type)}</span>
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-white font-['Nunito'] font-medium truncate">{item.name}</div>
-                {item.memberWifeName && (
-                  <div className="text-white/50 text-sm font-['Nunito'] truncate">
-                    Cônjuge: {item.memberWifeName}
+            <div key={idx} className="bg-[#2b2b2b] rounded-lg p-4 border border-white/10 hover:border-white/20 transition-colors">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex-1">
+                  <div className="flex items-center gap-3 mb-2">
+                    <h3 className="text-white font-['Nunito'] font-semibold">{item.name}</h3>
+                    <span className={`text-xs font-['Nunito'] px-2 py-1 rounded ${getTypeColor(item.type)}`}>
+                      {getTypeLabel(item.type)}
+                    </span>
                   </div>
-                )}
-                <div className="flex items-center gap-2 mt-1">
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${getTypeColor(item.type)}`}>
-                    {getTypeLabel(item.type)}
-                  </span>
-                  <span className="text-white/40 text-xs font-['Nunito']">
-                    {item.birthday ? new Date(item.birthday).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) : '-'}
-                  </span>
+                  {item.memberWifeName && (
+                    <p className="text-white/50 text-sm font-['Nunito']">Esposa: {item.memberWifeName}</p>
+                  )}
+                </div>
+                <div className="text-right">
+                  <p className="text-[#017158] font-['Nunito'] font-medium">
+                    {item.birthday || item.weddingDate || item.date || '—'}
+                  </p>
                 </div>
               </div>
             </div>

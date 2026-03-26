@@ -2,6 +2,8 @@ import { useEffect, useState, useMemo } from 'react';
 import ICRLayout from '../components/ICRLayout';
 import { useICRApi, Repass, Reference, Church } from '../hooks/useICRApi';
 import { toast } from 'sonner';
+import { isPermissionError } from '@/lib/utils';
+import PermissionDeniedError from '../components/PermissionDeniedError';
 
 interface RepassRow {
   churchId: number;
@@ -232,9 +234,15 @@ export default function Repasses() {
           </div>
         </div>
       ) : error ? (
-        <div className="flex items-center justify-center h-48 bg-[#2b2b2b] rounded-b-xl rounded-tr-xl">
-          <p className="text-red-400 font-['Nunito'] text-sm">{error}</p>
-        </div>
+        isPermissionError(new Error(error)) ? (
+          <div className="bg-[#2b2b2b] rounded-b-xl rounded-tr-xl">
+            <PermissionDeniedError message={error} compact={true} />
+          </div>
+        ) : (
+          <div className="flex items-center justify-center h-48 bg-[#2b2b2b] rounded-b-xl rounded-tr-xl">
+            <p className="text-red-400 font-['Nunito'] text-sm">{error}</p>
+          </div>
+        )
       ) : (
         <div className="bg-[#1a1a1a] rounded-b-xl rounded-tr-xl overflow-hidden border border-white/10">
           {/* TOTAL row */}

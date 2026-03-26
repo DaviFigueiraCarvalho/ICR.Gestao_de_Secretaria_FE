@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import ICRLayout from '../components/ICRLayout';
 import CRUDTable, { Column } from '../components/CRUDTable';
-import { useICRApi, Minister } from '../hooks/useICRApi';
+import SmartSelect from '../components/SmartSelect';
+import { useICRApi, Minister, Member } from '../hooks/useICRApi';
+import { useViaCEP } from '../hooks/useViaCEP';
 import { toast } from 'sonner';
 
 interface MinistroForm {
@@ -20,6 +22,7 @@ interface MinistroForm {
 
 export default function Ministros() {
   const { fetchApi } = useICRApi();
+  const { fetchCEP, loading: cepLoading, error: cepError } = useViaCEP();
   const [data, setData] = useState<Minister[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -31,17 +34,42 @@ export default function Ministros() {
     zipCode: '', street: '', number: '', city: '', state: '',
   });
   const [saving, setSaving] = useState(false);
+  const [members, setMembers] = useState<Member[]>([]);
 
   const load = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await fetchApi<Minister[]>('/api/ministers?page=1&pageSize=100');
-      setData(Array.isArray(result) ? result : []);
+      const [ministersResult, membersResult] = await Promise.all([
+        fetchApi<Minister[]>('/api/ministers?page=1&pageSize=100'),
+        fetchApi<Member[]>('/api/members?page=1&pageSize=100'),
+      ]);
+      setData(Array.isArray(ministersResult) ? ministersResult : []);
+      setMembers(Array.isArray(membersResult) ? membersResult : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar ministros');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleCEPChange = async (value: string) => {
+    setForm(prev => ({ ...prev, zipCode: value }));
+    
+    // Autocomplete quando atingir 8 dígitos
+    const cleanCEP = value.replace(/\D/g, '');
+    if (cleanCEP.length === 8) {
+      const cepData = await fetchCEP(value);
+      if (cepData) {
+        setForm(prev => ({
+          ...prev,
+          street: cepData.street,
+          city: cepData.city,
+          state: cepData.state,
+          // Mantém o número como estava
+        }));
+        toast.success('Endereço preenchido automaticamente');
+      }
     }
   };
 
@@ -155,12 +183,14 @@ export default function Ministros() {
 
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-white/70 text-sm font-['Nunito'] block mb-1">ID Membro *</label>
-                  <input type="number" value={form.memberId} onChange={e => setF('memberId', e.target.value ? Number(e.target.value) : '')}
-                    className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                    placeholder="ID do membro" />
-                </div>
+                <SmartSelect
+                  label="Membro *"
+                  selectedId={form.memberId}
+                  onSelect={(id) => setF('memberId', id)}
+                  items={members.map((m) => ({ id: m.id, name: m.name }))}
+                  placeholder="Selecione um membro"
+                  required
+                />
                 <div>
                   <label className="text-white/70 text-sm font-['Nunito'] block mb-1">CPF</label>
                   <input type="text" value={form.cpf} onChange={e => setF('cpf', e.target.value)}
@@ -194,10 +224,16 @@ export default function Ministros() {
                 <p className="text-white/50 text-xs font-['Nunito'] mb-3 uppercase tracking-wider">Endereço</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-white/70 text-sm font-['Nunito'] block mb-1">CEP</label>
-                    <input type="text" value={form.zipCode} onChange={e => setF('zipCode', e.target.value)}
-                      className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                      placeholder="00000-000" />
+                    <label className="text-white/70 text-sm font-['Nunito'] block mb-1">CEP {cepLoading && <span className="text-[#017158] text-xs">buscando...</span>}</label>
+                    <input 
+                      type="text" 
+                      value={form.zipCode} 
+                      onChange={e => handleCEPChange(e.target.value)}
+                      disabled={cepLoading}
+                      className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                      placeholder="00000-000" 
+                    />
+                    {cepError && <p className="text-red-400 text-xs mt-1">{cepError}</p>}
                   </div>
                   <div>
                     <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Número</label>

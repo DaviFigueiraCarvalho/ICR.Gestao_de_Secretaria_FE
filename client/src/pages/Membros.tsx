@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import ICRLayout from '../components/ICRLayout';
 import CRUDTable, { Column } from '../components/CRUDTable';
-import { useICRApi, Member } from '../hooks/useICRApi';
+import SmartSelect from '../components/SmartSelect';
+import { useICRApi, Member, Family } from '../hooks/useICRApi';
 import { toast } from 'sonner';
 
 interface MembroForm {
@@ -25,13 +26,18 @@ export default function Membros() {
     name: '', familyId: '', gender: 'MALE', birthDate: '', hasBeenMarried: false, role: '', cellPhone: '',
   });
   const [saving, setSaving] = useState(false);
+  const [families, setFamilies] = useState<Family[]>([]);
 
   const load = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await fetchApi<Member[]>('/api/members?page=1&pageSize=100');
-      setData(Array.isArray(result) ? result : []);
+      const [membersResult, familiesResult] = await Promise.all([
+        fetchApi<Member[]>('/api/members?page=1&pageSize=100'),
+        fetchApi<Family[]>('/api/families?page=1&pageSize=100'),
+      ]);
+      setData(Array.isArray(membersResult) ? membersResult : []);
+      setFamilies(Array.isArray(familiesResult) ? familiesResult : []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar membros');
     } finally {
@@ -159,12 +165,13 @@ export default function Membros() {
                   <input type="date" value={form.birthDate} onChange={e => setF('birthDate', e.target.value)}
                     className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]" />
                 </div>
-                <div>
-                  <label className="text-white/70 text-sm font-['Nunito'] block mb-1">ID Família</label>
-                  <input type="number" value={form.familyId} onChange={e => setF('familyId', e.target.value ? Number(e.target.value) : '')}
-                    className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                    placeholder="ID da família" />
-                </div>
+                <SmartSelect
+                  label="Família"
+                  selectedId={form.familyId}
+                  onSelect={(id) => setF('familyId', id)}
+                  items={families.map((f) => ({ id: f.id, name: f.name }))}
+                  placeholder="Selecione uma família"
+                />
                 <div>
                   <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Telefone</label>
                   <input type="text" value={form.cellPhone} onChange={e => setF('cellPhone', e.target.value)}
