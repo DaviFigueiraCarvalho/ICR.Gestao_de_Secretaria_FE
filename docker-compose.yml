@@ -1,0 +1,16 @@
+services:
+  icr.front:
+    image: ghcr.io/davifigueiracarvalho/icr-gestao-secretaria-fe:latest
+    container_name: icr_front
+    ports:
+      - "3000:3000"
+    environment:
+      ICR_API_URL: http://icr.api:8080
+    networks:
+      - icr-net
+
+networks:
+  # Se estiver rodando junto com o compose do backend (que já cria icr-net),
+  # troque por:  icr-net:\n    external: true
+  icr-net:
+    driver: bridge
