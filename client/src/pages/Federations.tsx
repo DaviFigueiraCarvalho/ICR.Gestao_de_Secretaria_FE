@@ -32,7 +32,7 @@ export default function Federacoes() {
       setData(federationsResult);
       setMembers(membersResult);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao carregar federações');
+      setError(err instanceof Error ? err.message : 'Erro ao carregar Areas');
     } finally {
       setIsLoading(false);
     }
@@ -68,13 +68,13 @@ export default function Federacoes() {
           method: 'PATCH',
           body: JSON.stringify(body),
         });
-        toast.success('Federação atualizada com sucesso');
+        toast.success('Area atualizada com sucesso');
       } else {
         await fetchApi('/api/federations', {
           method: 'POST',
           body: JSON.stringify(body),
         });
-        toast.success('Federação criada com sucesso');
+        toast.success('Area criada com sucesso');
       }
       setShowModal(false);
       load();
@@ -97,9 +97,9 @@ export default function Federacoes() {
   ];
 
   return (
-    <ICRLayout title="Comissões Federadas">
+    <ICRLayout title="Áreas">
       <CRUDTable
-        title="Comissões Federadas"
+        title="Áreas"
         data={data}
         columns={columns}
         isLoading={isLoading}
@@ -108,9 +108,9 @@ export default function Federacoes() {
         onEdit={openEdit}
         onDelete={handleDelete}
         onRefresh={load}
-        searchPlaceholder="Buscar federação..."
-        emptyMessage="Nenhuma comissão federada encontrada"
-        addLabel="Nova Federação"
+        searchPlaceholder="Buscar área..."
+        emptyMessage="Nenhuma área encontrada"
+        addLabel="Nova Área"
       />
 
       {/* Modal */}
@@ -119,7 +119,7 @@ export default function Federacoes() {
           <div className="bg-[#2b2b2b] rounded-xl p-6 max-w-md w-full shadow-2xl">
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-white font-['Nunito'] font-semibold text-lg">
-                {editItem ? 'Editar Federação' : 'Nova Federação'}
+                {editItem ? 'Editar Área' : 'Nova Área'}
               </h3>
               <button onClick={() => setShowModal(false)} className="text-white/40 hover:text-white transition-colors">
                 <span className="material-icons">close</span>
@@ -134,7 +134,7 @@ export default function Federacoes() {
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                   className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] transition-colors"
-                  placeholder="Nome da federação"
+                  placeholder="Nome da área"
                 />
               </div>
               <SmartSelect

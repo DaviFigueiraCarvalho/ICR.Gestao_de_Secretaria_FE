@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import ICRLayout from '../components/ICRLayout';
 import { useICRApi, Repass, Reference, Church } from '../hooks/useICRApi';
+import { useTheme } from '../contexts/ThemeContext';
 import { toast } from 'sonner';
 import { isPermissionError } from '@/lib/utils';
 import PermissionDeniedError from '../components/PermissionDeniedError';
@@ -9,7 +10,6 @@ interface RepassRow {
   churchId: number;
   churchName: string;
   federationName?: string;
-  state?: string;
   repass?: Repass;
   amount?: number;
 }
@@ -22,6 +22,8 @@ interface RepassForm {
 
 export default function Repasses() {
   const { fetchApi } = useICRApi();
+  const { theme } = useTheme();
+  const isLight = theme === 'light';
   const [references, setReferences] = useState<Reference[]>([]);
   const [churches, setChurches] = useState<Church[]>([]);
   const [repasses, setRepasses] = useState<Repass[]>([]);
@@ -71,6 +73,13 @@ export default function Repasses() {
 
   // Build rows: all churches with their repass status for selected reference
   const rows = useMemo((): RepassRow[] => {
+    const getSortPriority = (amount?: number) => {
+      const value = amount || 0;
+      if (value > 150) return 0; // Pagos
+      if (value === 150) return 1; // Minimo
+      return 2; // Nao pagos
+    };
+
     return churches
       .filter(c => !search || c.name.toLowerCase().includes(search.toLowerCase()) || (c.federationName || '').toLowerCase().includes(search.toLowerCase()))
       .map(church => {
@@ -79,10 +88,20 @@ export default function Repasses() {
           churchId: church.id,
           churchName: church.name,
           federationName: church.federationName,
-          state: church.address?.state,
           repass,
           amount: repass?.amount,
         };
+      })
+      .sort((a, b) => {
+        const priorityDiff = getSortPriority(a.amount) - getSortPriority(b.amount);
+        if (priorityDiff !== 0) return priorityDiff;
+
+        const federationCompare = (a.federationName || '').localeCompare(b.federationName || '', 'pt-BR', {
+          sensitivity: 'base',
+        });
+        if (federationCompare !== 0) return federationCompare;
+
+        return a.churchName.localeCompare(b.churchName, 'pt-BR', { sensitivity: 'base' });
       });
   }, [churches, repasses, search]);
 
@@ -93,16 +112,26 @@ export default function Repasses() {
 
  const getRowColor = (row: RepassRow): string => {
     const val = row.amount || 0;
+    if (isLight) {
+      if (val > 150) return 'bg-[#e4f4ef] hover:bg-[#d6ede5]';
+      if (val === 150) return 'bg-[#fdf3dc] hover:bg-[#f7ebcf]';
+      return 'bg-[#f9e4e4] hover:bg-[#f4d8d8]';
+    }
     if (val > 150) return 'bg-green-900/40 hover:bg-green-900/50';
     if (val === 150) return 'bg-yellow-900/40 hover:bg-yellow-900/50';
-    return 'bg-red-900/40 hover:bg-red-900/50'; // Menor que 150
+    return 'bg-red-900/40 hover:bg-red-900/50';
   };
 
   const getRowTextColor = (row: RepassRow): string => {
     const val = row.amount || 0;
+    if (isLight) {
+      if (val > 150) return 'text-[#0f6d58]';
+      if (val === 150) return 'text-[#8a6708]';
+      return 'text-[#943434]';
+    }
     if (val > 150) return 'text-green-200';
     if (val === 150) return 'text-yellow-200';
-    return 'text-red-200'; // Menor que 150
+    return 'text-red-200';
   };
   
 
@@ -170,17 +199,17 @@ export default function Repasses() {
     <ICRLayout title="Repasses">
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="bg-[#2b2b2b] rounded-xl p-4">
+        <div className={`${isLight ? 'bg-white border border-[#cfe4dc]' : 'bg-[#2b2b2b]'} rounded-xl p-4`}>
           <div className="text-white/50 text-xs font-['Nunito'] uppercase tracking-wider mb-1">Total Repassado</div>
           <div className="text-[#017158] text-2xl font-['Nunito'] font-bold">{formatCurrency(totalPaid)}</div>
         </div>
-        <div className="bg-green-900/30 border border-green-700/30 rounded-xl p-4">
-          <div className="text-green-300/70 text-xs font-['Nunito'] uppercase tracking-wider mb-1">Igrejas em Dia</div>
-          <div className="text-green-300 text-2xl font-['Nunito'] font-bold">{paidCount}</div>
+        <div className={`${isLight ? 'bg-[#e3f2ec] border-[#b6dacd]' : 'bg-green-900/30 border-green-700/30'} border rounded-xl p-4`}>
+          <div className={`${isLight ? 'text-[#277864]' : 'text-green-300/70'} text-xs font-['Nunito'] uppercase tracking-wider mb-1`}>Igrejas em Dia</div>
+          <div className={`${isLight ? 'text-[#0f6d58]' : 'text-green-300'} text-2xl font-['Nunito'] font-bold`}>{paidCount}</div>
         </div>
-        <div className="bg-red-900/30 border border-red-700/30 rounded-xl p-4">
-          <div className="text-red-300/70 text-xs font-['Nunito'] uppercase tracking-wider mb-1">Pendentes</div>
-          <div className="text-red-300 text-2xl font-['Nunito'] font-bold">{pendingCount}</div>
+        <div className={`${isLight ? 'bg-[#f9e5e5] border-[#e7bbbb]' : 'bg-red-900/30 border-red-700/30'} border rounded-xl p-4`}>
+          <div className={`${isLight ? 'text-[#995050]' : 'text-red-300/70'} text-xs font-['Nunito'] uppercase tracking-wider mb-1`}>Pendentes</div>
+          <div className={`${isLight ? 'text-[#943434]' : 'text-red-300'} text-2xl font-['Nunito'] font-bold`}>{pendingCount}</div>
         </div>
       </div>
 
@@ -195,7 +224,7 @@ export default function Repasses() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Buscar igreja..."
-              className="bg-[#2b2b2b] border border-white/20 rounded-lg pl-9 pr-4 py-2 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] transition-colors w-56"
+              className={`${isLight ? 'bg-white border-[#cfe4dc] text-[#0f6d58]' : 'bg-[#2b2b2b] border-white/20 text-white'} border rounded-lg pl-9 pr-4 py-2 font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] transition-colors w-56`}
             />
           </div>
         </div>
@@ -216,8 +245,8 @@ export default function Repasses() {
             onClick={() => setSelectedRef(ref.id)}
             className={`px-4 py-2 text-sm font-['Nunito'] font-medium transition-colors border-b-2 whitespace-nowrap ${
               selectedRef === ref.id
-                ? 'text-white border-[#017158] bg-[#017158]/10'
-                : 'text-white/50 border-transparent hover:text-white/80 hover:border-white/20'
+                ? `${isLight ? 'text-[#0f6d58] border-[#017158] bg-[#017158]/10' : 'text-white border-[#017158] bg-[#017158]/10'}`
+                : `${isLight ? 'text-[#4b7c70] border-transparent hover:text-[#0f6d58] hover:border-[#017158]/30' : 'text-white/50 border-transparent hover:text-white/80 hover:border-white/20'}`
             }`}
           >
             {ref.name}
@@ -227,7 +256,7 @@ export default function Repasses() {
 
       {/* Excel-like table */}
       {isLoading ? (
-        <div className="flex items-center justify-center h-48 bg-[#2b2b2b] rounded-b-xl rounded-tr-xl">
+        <div className={`flex items-center justify-center h-48 rounded-b-xl rounded-tr-xl ${isLight ? 'bg-white border border-[#cfe4dc]' : 'bg-[#2b2b2b]'}`}>
           <div className="flex flex-col items-center gap-3">
             <span className="material-icons animate-spin text-[#017158] text-3xl">refresh</span>
             <p className="text-white/50 font-['Nunito'] text-sm">Carregando...</p>
@@ -244,9 +273,9 @@ export default function Repasses() {
           </div>
         )
       ) : (
-        <div className="bg-[#1a1a1a] rounded-b-xl rounded-tr-xl overflow-hidden border border-white/10">
+        <div className={`${isLight ? 'bg-white border-[#cfe4dc]' : 'bg-[#1a1a1a] border-white/10'} rounded-b-xl rounded-tr-xl overflow-hidden border`}>
           {/* TOTAL row */}
-          <div className="flex items-center px-4 py-3 border-b border-white/10 bg-[#0f0f0f]">
+          <div className={`flex items-center px-4 py-3 border-b ${isLight ? 'border-[#d8e9e2] bg-[#f2f8f6]' : 'border-white/10 bg-[#0f0f0f]'}`}>
             <div className="flex-1">
               <span className="text-white font-['Nunito'] font-bold text-lg">TOTAL</span>
             </div>
@@ -257,13 +286,13 @@ export default function Repasses() {
           </div>
 
           {/* Table header */}
-          <div className="flex items-center px-4 py-2 bg-[#111] border-b border-white/20">
+          <div className={`flex items-center px-4 py-2 border-b ${isLight ? 'bg-[#f8fcfa] border-[#d8e9e2]' : 'bg-[#111] border-white/20'}`}>
             <div className="flex-1 text-white/60 text-xs font-['Nunito'] font-semibold uppercase tracking-wider flex items-center gap-1">
               CIDADES
               <span className="material-icons text-[14px]">filter_list</span>
             </div>
-            <div className="w-32 text-white/60 text-xs font-['Nunito'] font-semibold uppercase tracking-wider flex items-center gap-1">
-              ESTADOS
+            <div className="w-48 text-white/60 text-xs font-['Nunito'] font-semibold uppercase tracking-wider flex items-center gap-1">
+              AREAS
               <span className="material-icons text-[14px]">filter_list</span>
             </div>
             <div className="w-48 text-right text-white/60 text-xs font-['Nunito'] font-semibold uppercase tracking-wider flex items-center justify-end gap-1">
@@ -292,13 +321,13 @@ export default function Repasses() {
               rows.map((row, idx) => (
                 <div
                   key={row.churchId}
-                  className={`flex items-center px-4 py-2 border-b border-white/5 transition-colors ${getRowColor(row)}`}
+                  className={`flex items-center px-4 py-2 border-b ${isLight ? 'border-[#e6f0ec]' : 'border-white/5'} transition-colors ${getRowColor(row)}`}
                 >
                   <div className={`flex-1 font-['Nunito'] font-medium text-sm ${getRowTextColor(row)}`}>
                     {row.churchName}
                   </div>
-                  <div className={`w-32 font-['Nunito'] text-sm ${getRowTextColor(row)}`}>
-                    {row.state || row.federationName || '-'}
+                  <div className={`w-48 font-['Nunito'] text-sm ${getRowTextColor(row)}`}>
+                    {row.federationName || '-'}
                   </div>
                   <div className={`w-48 text-right font-['Nunito'] font-bold text-sm ${getRowTextColor(row)}`}>
                     {row.amount && row.amount > 0 ? (
@@ -307,12 +336,12 @@ export default function Repasses() {
                         {row.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                       </span>
                     ) : (
-                      <span className="text-white/20 text-xs">—</span>
+                      <span className={`${isLight ? 'text-[#7ca294]' : 'text-white/20'} text-xs`}>—</span>
                     )}
                   </div>
                   <div className={`w-32 text-right font-['Nunito'] text-sm ${getRowTextColor(row)}`}>
                     {/* Caso especial placeholder */}
-                    <span className="text-white/20 text-xs">—</span>
+                    <span className={`${isLight ? 'text-[#7ca294]' : 'text-white/20'} text-xs`}>—</span>
                   </div>
                   <div className="w-20 flex items-center justify-end gap-1">
                     <button
@@ -338,7 +367,7 @@ export default function Repasses() {
           </div>
 
           {/* Legend */}
-          <div className="flex items-center gap-4 px-4 py-3 border-t border-white/10 bg-[#0f0f0f]">
+          <div className={`flex items-center gap-4 px-4 py-3 border-t ${isLight ? 'border-[#d8e9e2] bg-[#f8fcfa]' : 'border-white/10 bg-[#0f0f0f]'}`}>
             <span className="text-white/40 text-xs font-['Nunito']">Legenda:</span>
             <div className="flex items-center gap-1.5">
               <div className="w-3 h-3 rounded bg-green-600"></div>

@@ -12,6 +12,7 @@ interface MinisterBirthday {
   birthday?: string;
   date?: string;
   weddingDate?: string;
+  role?: number; // 1 = Pastor (Pr), 2 = Presbítero (Pb)
 }
 
 type TabType = 'all' | 'birthday' | 'wedding';
@@ -26,6 +27,23 @@ const TABS: { id: TabType; label: string; type?: string }[] = [
   { id: 'birthday', label: 'Aniversários', type: 'birthday' },
   { id: 'wedding', label: 'Casamentos', type: 'wedding' },
 ];
+
+const getMinisterPrefix = (role?: number): string => {
+  if (role === 1) return 'Pr ';
+  if (role === 2) return 'Pb ';
+  return '';
+};
+
+const getDisplayName = (item: MinisterBirthday): string => {
+  const prefix = getMinisterPrefix(item.role);
+  
+  // Se for casamento, mostrar "Pr Nome e Nome da Esposa" ou "Pb Nome e Nome da Esposa"
+  if ((item.type === 'WEDDING' || item.type === 'wedding') && item.memberWifeName) {
+    return `${prefix}${item.name} e ${item.memberWifeName}`;
+  }
+  
+  return `${prefix}${item.name}`;
+};
 
 export default function DatasPastores() {
   const { fetchApi } = useICRApi();
@@ -56,6 +74,7 @@ export default function DatasPastores() {
         result = Array.isArray(response) ? response : [];
       }
 
+      console.log('🩺 DatesMinister API response sample:', result[0]);
       setData(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar datas');
@@ -161,12 +180,12 @@ export default function DatasPastores() {
               <div className="flex items-start justify-between gap-4">
                 <div className="flex-1">
                   <div className="flex items-center gap-3 mb-2">
-                    <h3 className="text-white font-['Nunito'] font-semibold">{item.name}</h3>
+                    <h3 className="text-white font-['Nunito'] font-semibold">{getDisplayName(item)}</h3>
                     <span className={`text-xs font-['Nunito'] px-2 py-1 rounded ${getTypeColor(item.type)}`}>
                       {getTypeLabel(item.type)}
                     </span>
                   </div>
-                  {item.memberWifeName && (
+                  {item.memberWifeName && (item.type === 'BIRTHDAY' || item.type === 'birthday') && (
                     <p className="text-white/50 text-sm font-['Nunito']">Esposa: {item.memberWifeName}</p>
                   )}
                 </div>

@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import ICRLayout from '../components/ICRLayout';
 import CRUDTable, { Column } from '../components/CRUDTable';
 import SmartSelect from '../components/SmartSelect';
 import { useICRApi, Minister, Member } from '../hooks/useICRApi';
 import { useViaCEP } from '../hooks/useViaCEP';
+import { useLocation } from 'wouter';
 import { toast } from 'sonner';
 
 interface MinistroForm {
@@ -20,9 +21,41 @@ interface MinistroForm {
   state: string;
 }
 
+const normalizeCPF = (value: string): string => value.replace(/\D/g, '').slice(0, 11);
+const normalizeCEP = (value: string): string => value.replace(/\D/g, '').slice(0, 8);
+
+const formatCPF = (value: string): string => {
+  const digits = normalizeCPF(value);
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+  if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+  return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+};
+
+const formatCEP = (value: string): string => {
+  const digits = normalizeCEP(value);
+  if (digits.length <= 5) return digits;
+  return `${digits.slice(0, 5)}-${digits.slice(5)}`;
+};
+
+const PRESBITERO_ROLE = 2;
+
+const getMemberRoleValue = (value: unknown): number | '' => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+    const numeric = Number(trimmed);
+    return Number.isFinite(numeric) ? numeric : '';
+  }
+  return '';
+};
+
 export default function Ministros() {
   const { fetchApi } = useICRApi();
+  const [location, setLocation] = useLocation();
   const { fetchCEP, loading: cepLoading, error: cepError } = useViaCEP();
+  const todayDate = new Date().toISOString().split('T')[0];
   const [data, setData] = useState<Minister[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +68,9 @@ export default function Ministros() {
   });
   const [saving, setSaving] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
+  const handledPrefillRef = useRef<string | null>(null);
+  const selectedMember = members.find((member) => member.id === form.memberId);
+  const isSelectedMemberPresbitero = getMemberRoleValue(selectedMember?.role) === PRESBITERO_ROLE;
 
   const load = async () => {
     setIsLoading(true);
@@ -54,10 +90,11 @@ export default function Ministros() {
   };
 
   const handleCEPChange = async (value: string) => {
-    setForm(prev => ({ ...prev, zipCode: value }));
+    const normalizedCEP = normalizeCEP(value);
+    setForm(prev => ({ ...prev, zipCode: normalizedCEP }));
     
     // Autocomplete quando atingir 8 dígitos
-    const cleanCEP = value.replace(/\D/g, '');
+    const cleanCEP = normalizedCEP;
     if (cleanCEP.length === 8) {
       const cepData = await fetchCEP(value);
       if (cepData) {
@@ -75,9 +112,51 @@ export default function Ministros() {
 
   useEffect(() => { load(); }, []);
 
-  const openAdd = () => {
+  useEffect(() => {
+    const [path, query = ''] = location.split('?');
+    if (path !== '/ministers') return;
+
+    const params = new URLSearchParams(query);
+    const shouldOpenNew = params.get('openNew') === '1';
+    const rawMemberId = params.get('memberId');
+    const memberId = rawMemberId ? Number(rawMemberId) : NaN;
+
+    if (!shouldOpenNew || !Number.isFinite(memberId) || memberId <= 0) {
+      return;
+    }
+
+    const prefillKey = `${memberId}`;
+    if (handledPrefillRef.current === prefillKey) {
+      return;
+    }
+    handledPrefillRef.current = prefillKey;
+
+    const prefillAndOpen = async () => {
+      try {
+        const exists = members.some((member) => member.id === memberId);
+        if (!exists) {
+          const fetchedMember = await fetchApi<Member>(`/api/members/${memberId}`);
+          if (fetchedMember?.id) {
+            setMembers((prev) => {
+              if (prev.some((member) => member.id === fetchedMember.id)) return prev;
+              return [...prev, fetchedMember];
+            });
+          }
+        }
+      } catch {
+        toast.error('Nao foi possivel pre-selecionar o membro criado.');
+      } finally {
+        openAdd(memberId);
+        setLocation('/ministers');
+      }
+    };
+
+    prefillAndOpen();
+  }, [location, members, fetchApi, setLocation]);
+
+  const openAdd = (memberId?: number) => {
     setEditItem(null);
-    setForm({ memberId: '', cpf: '', email: '', cardValidity: '', presbiterOrdinationDate: '', ministerOrdinationDate: '', zipCode: '', street: '', number: '', city: '', state: '' });
+    setForm({ memberId: memberId ?? '', cpf: '', email: '', cardValidity: '', presbiterOrdinationDate: '', ministerOrdinationDate: '', zipCode: '', street: '', number: '', city: '', state: '' });
     setShowModal(true);
   };
 
@@ -101,17 +180,27 @@ export default function Ministros() {
 
   const handleSave = async () => {
     if (!form.memberId) { toast.error('ID do membro é obrigatório'); return; }
+    const normalizedCpf = normalizeCPF(form.cpf);
+    const normalizedZipCode = normalizeCEP(form.zipCode);
+    if (normalizedCpf && normalizedCpf.length !== 11) {
+      toast.error('CPF deve conter 11 dígitos');
+      return;
+    }
+    if (normalizedZipCode && normalizedZipCode.length !== 8) {
+      toast.error('CEP deve conter 8 dígitos');
+      return;
+    }
     setSaving(true);
     try {
       const body: Record<string, unknown> = {
         memberId: Number(form.memberId),
-        cpf: form.cpf,
+        cpf: normalizedCpf,
         email: form.email,
         cardValidity: form.cardValidity || undefined,
         presbiterOrdinationDate: form.presbiterOrdinationDate || undefined,
         ministerOrdinationDate: form.ministerOrdinationDate || undefined,
         address: {
-          zipCode: form.zipCode,
+          zipCode: normalizedZipCode,
           street: form.street,
           number: form.number,
           city: form.city,
@@ -147,7 +236,7 @@ export default function Ministros() {
     { key: 'email', label: 'E-mail', render: (item) => item.email || '-' },
     { key: 'cpf', label: 'CPF', render: (item) => item.cpf || '-' },
     { key: 'cardValidity', label: 'Validade Carteira', render: (item) => item.cardValidity ? new Date(item.cardValidity).toLocaleDateString('pt-BR') : '-' },
-    { key: 'ministerOrdinationDate', label: 'Ordenação Ministro', render: (item) => item.ministerOrdinationDate ? new Date(item.ministerOrdinationDate).toLocaleDateString('pt-BR') : '-' },
+    { key: 'ministerOrdinationDate', label: 'Ordenação a Pastor', render: (item) => item.ministerOrdinationDate ? new Date(item.ministerOrdinationDate).toLocaleDateString('pt-BR') : '-' },
   ];
 
   const setF = (key: keyof MinistroForm, val: string | number) => setForm(prev => ({ ...prev, [key]: val }));
@@ -193,9 +282,16 @@ export default function Ministros() {
                 />
                 <div>
                   <label className="text-white/70 text-sm font-['Nunito'] block mb-1">CPF</label>
-                  <input type="text" value={form.cpf} onChange={e => setF('cpf', e.target.value)}
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={14}
+                    value={formatCPF(form.cpf)}
+                    onChange={e => setF('cpf', normalizeCPF(e.target.value))}
                     className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                    placeholder="000.000.000-00" />
+                    placeholder="000.000.000-00"
+                  />
                 </div>
                 <div className="col-span-2">
                   <label className="text-white/70 text-sm font-['Nunito'] block mb-1">E-mail</label>
@@ -210,14 +306,16 @@ export default function Ministros() {
                 </div>
                 <div>
                   <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Ordenação Presbítero</label>
-                  <input type="date" value={form.presbiterOrdinationDate} onChange={e => setF('presbiterOrdinationDate', e.target.value)}
+                  <input type="date" max={todayDate} value={form.presbiterOrdinationDate} onChange={e => setF('presbiterOrdinationDate', e.target.value)}
                     className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]" />
                 </div>
-                <div>
-                  <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Ordenação Ministro</label>
-                  <input type="date" value={form.ministerOrdinationDate} onChange={e => setF('ministerOrdinationDate', e.target.value)}
-                    className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]" />
-                </div>
+                {!isSelectedMemberPresbitero && (
+                  <div>
+                    <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Ordenação a Pastor</label>
+                    <input type="date" max={todayDate} value={form.ministerOrdinationDate} onChange={e => setF('ministerOrdinationDate', e.target.value)}
+                      className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]" />
+                  </div>
+                )}
               </div>
 
               <div className="border-t border-white/10 pt-4">
@@ -227,8 +325,11 @@ export default function Ministros() {
                     <label className="text-white/70 text-sm font-['Nunito'] block mb-1">CEP {cepLoading && <span className="text-[#017158] text-xs">buscando...</span>}</label>
                     <input 
                       type="text" 
-                      value={form.zipCode} 
+                      value={formatCEP(form.zipCode)} 
                       onChange={e => handleCEPChange(e.target.value)}
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={9}
                       disabled={cepLoading}
                       className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
                       placeholder="00000-000" 

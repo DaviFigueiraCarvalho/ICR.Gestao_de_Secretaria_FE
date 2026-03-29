@@ -21,6 +21,7 @@ interface SmartSelectProps {
   items: SmartSelectOption[];
   placeholder?: string;
   required?: boolean;
+  disabled?: boolean;
   className?: string;
 }
 
@@ -31,6 +32,7 @@ export default function SmartSelect({
   items,
   placeholder = 'Selecione...',
   required = false,
+  disabled = false,
   className = '',
 }: SmartSelectProps) {
   const [open, setOpen] = useState(false);
@@ -52,7 +54,10 @@ export default function SmartSelect({
         <PopoverTrigger asChild>
           <button
             type="button"
-            className="w-full text-left bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
+            disabled={disabled}
+            className={`w-full text-left bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] ${
+              disabled ? 'opacity-50 cursor-not-allowed' : ''
+            }`}
           >
             {selected ? selected.name : placeholder}
           </button>

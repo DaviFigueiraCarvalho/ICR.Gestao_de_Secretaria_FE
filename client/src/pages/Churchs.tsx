@@ -1,8 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import ICRLayout from '../components/ICRLayout';
 import CRUDTable, { Column } from '../components/CRUDTable';
 import SmartSelect from '../components/SmartSelect';
-import { useICRApi, Church, Federation, Minister } from '../hooks/useICRApi';
+import MultiSmartSelect from '../components/MultiSmartSelect';
+import { useICRAuth } from '../contexts/ICRAuthContext';
+import { getScopeLevel } from '../lib/scope-access';
+import { useICRApi, Cell, Church, Federation, Minister } from '../hooks/useICRApi';
 import { useViaCEP } from '../hooks/useViaCEP';
 import { toast } from 'sonner';
 
@@ -19,6 +22,7 @@ interface IgrejaForm {
 
 export default function Igrejas() {
   const { fetchApi } = useICRApi();
+  const { user } = useICRAuth();
   const { fetchCEP, loading: cepLoading, error: cepError } = useViaCEP();
   const [data, setData] = useState<Church[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -32,19 +36,25 @@ export default function Igrejas() {
   const [saving, setSaving] = useState(false);
   const [federations, setFederations] = useState<Federation[]>([]);
   const [ministers, setMinisters] = useState<Minister[]>([]);
+  const [cells, setCells] = useState<Cell[]>([]);
+  const [selectedFederationIds, setSelectedFederationIds] = useState<number[]>([]);
+  const scopeLevel = getScopeLevel(user?.scope, user?.username);
+  const isFederatedScope = scopeLevel === 'federated';
 
   const load = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const [churchesResult, federationsResult, ministersResult] = await Promise.all([
+      const [churchesResult, federationsResult, ministersResult, cellsResult] = await Promise.all([
         fetchApi<Church[]>('/api/churches'),
         fetchApi<Federation[]>('/api/federations'),
         fetchApi<Minister[]>('/api/ministers'),
+        fetchApi<Cell[]>('/api/cells'),
       ]);
       setData(churchesResult);
       setFederations(federationsResult);
       setMinisters(ministersResult);
+      setCells(cellsResult);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar igrejas');
     } finally {
@@ -98,7 +108,7 @@ export default function Igrejas() {
 const handleSave = async () => {
   // 1. Validações básicas no Front
   if (!form.name.trim()) { toast.error('Nome é obrigatório'); return; }
-  if (!form.federationId) { toast.error('Federação é obrigatória'); return; }
+  if (!form.federationId) { toast.error('Area é obrigatória'); return; }
 
   // 2. Limpeza do CEP (Remove hífens e pontos) para evitar o erro de 8 dígitos do Backend
   const cleanZipCode = form.zipCode.replace(/\D/g, '');
@@ -150,26 +160,127 @@ const handleSave = async () => {
   }
 };
   const handleDelete = async (item: Church) => {
-    await fetchApi(`/api/churches/${item.id}`, { method: 'DELETE' });
+    const shouldMoveDependencies = window.confirm(
+      'Deseja mover os dados dependentes para outra igreja antes de excluir?\n\nOK = mover dependencias\nCancelar = excluir em cascata',
+    );
+
+    let targetChurchId: number | undefined;
+    let targetCellId: number | undefined;
+
+    if (shouldMoveDependencies) {
+      const availableChurches = data.filter((church) => church.id !== item.id);
+
+      if (availableChurches.length === 0) {
+        throw new Error('Nao existe outra igreja disponivel para mover os dados dependentes.');
+      }
+
+      const churchPrompt = window.prompt(
+        `Informe o ID da igreja de destino:\n${availableChurches
+          .map((church) => `${church.id} - ${church.name}`)
+          .join('\n')}`,
+      );
+
+      const parsedTargetChurchId = Number(churchPrompt);
+      if (!Number.isFinite(parsedTargetChurchId) || !availableChurches.some((church) => church.id === parsedTargetChurchId)) {
+        throw new Error('ID da igreja de destino invalido.');
+      }
+
+      targetChurchId = parsedTargetChurchId;
+
+      const targetChurchCells = cells.filter((cell) => cell.churchId === parsedTargetChurchId);
+      if (targetChurchCells.length > 0) {
+        const cellPrompt = window.prompt(
+          `Informe o ID da celula de destino (opcional):\n${targetChurchCells
+            .map((cell) => `${cell.id} - ${cell.name}`)
+            .join('\n')}`,
+        );
+
+        if (cellPrompt?.trim()) {
+          const parsedTargetCellId = Number(cellPrompt);
+          if (!Number.isFinite(parsedTargetCellId) || !targetChurchCells.some((cell) => cell.id === parsedTargetCellId)) {
+            throw new Error('ID da celula de destino invalido para a igreja escolhida.');
+          }
+          targetCellId = parsedTargetCellId;
+        }
+      }
+    }
+
+    const query = new URLSearchParams();
+    if (targetChurchId) query.set('targetChurchId', String(targetChurchId));
+    if (targetCellId) query.set('targetCellId', String(targetCellId));
+
+    const path = query.toString()
+      ? `/api/churches/bulk/${item.id}?${query.toString()}`
+      : `/api/churches/bulk/${item.id}`;
+
+    await fetchApi(path, { method: 'DELETE' });
     load();
   };
 
   const columns: Column<Church>[] = [
     { key: 'id', label: 'ID' },
     { key: 'name', label: 'Nome' },
-    { key: 'federationName', label: 'Federação', render: (item) => item.federationName || '-' },
+    { key: 'federationName', label: 'Área', render: (item) => item.federationName || '-' },
     { key: 'ministerName', label: 'Ministro', render: (item) => item.ministerName || '-' },
     { key: 'city', label: 'Cidade', render: (item) => item.address?.city || '-' },
     { key: 'state', label: 'Estado', render: (item) => item.address?.state || '-' },
   ];
 
+  const federationOptions = useMemo(
+    () => federations.map((federation) => ({ id: federation.id, name: `${federation.id} - ${federation.name}` })),
+    [federations],
+  );
+
+  const filteredData = useMemo(() => {
+    if (selectedFederationIds.length === 0) return data;
+
+    return data.filter((church) =>
+      typeof church.federationId === 'number' && selectedFederationIds.includes(church.federationId),
+    );
+  }, [data, selectedFederationIds]);
+
+  const lockedFederationId = useMemo(() => {
+    if (!isFederatedScope) return undefined;
+
+    if (typeof user?.federationId === 'number') return user.federationId;
+
+    if (typeof user?.memberId === 'number') {
+      const ministerFromMember = ministers.find((minister) => minister.memberId === user.memberId);
+      if (ministerFromMember?.id) {
+        const federationFromMinister = federations.find((federation) => federation.ministerId === ministerFromMember.id);
+        if (federationFromMinister?.id) return federationFromMinister.id;
+      }
+    }
+
+    if (federations.length === 1) return federations[0].id;
+    return federations[0]?.id;
+  }, [federations, isFederatedScope, ministers, user?.federationId, user?.memberId]);
+
+  useEffect(() => {
+    if (!isFederatedScope || !lockedFederationId) return;
+
+    setSelectedFederationIds([lockedFederationId]);
+    setForm((prev) => ({ ...prev, federationId: lockedFederationId }));
+  }, [isFederatedScope, lockedFederationId]);
+
   const setF = (key: keyof IgrejaForm, val: string | number) => setForm(prev => ({ ...prev, [key]: val }));
 
   return (
     <ICRLayout title="Igrejas">
+      {!isFederatedScope && (
+        <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+          <MultiSmartSelect
+            label="Filtro por Áreas"
+            selectedIds={selectedFederationIds}
+            onChange={setSelectedFederationIds}
+            items={federationOptions}
+            placeholder="Todas as áreas"
+          />
+        </div>
+      )}
       <CRUDTable
         title="Igrejas"
-        data={data}
+        data={filteredData}
         columns={columns}
         isLoading={isLoading}
         error={error}
@@ -203,12 +314,18 @@ const handleSave = async () => {
                     placeholder="Nome da igreja" />
                 </div>
                 <SmartSelect
-                  label="Federação *"
+                  label="Area"
                   selectedId={form.federationId}
-                  onSelect={(id) => setF('federationId', id)}
-                  items={federations.map((f) => ({ id: f.id, name: f.name }))}
-                  placeholder="Selecione uma federação"
+                  onSelect={(id) => {
+                    if (isFederatedScope) return;
+                    setF('federationId', id);
+                  }}
+                  items={isFederatedScope && lockedFederationId
+                    ? federations.filter((f) => f.id === lockedFederationId).map((f) => ({ id: f.id, name: f.name }))
+                    : federations.map((f) => ({ id: f.id, name: f.name }))}
+                  placeholder="Selecione uma área"
                   required
+                  disabled={isFederatedScope}
                 />
                 <SmartSelect
                   label="Ministro"

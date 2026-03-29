@@ -7,8 +7,8 @@ import { Avatar, AvatarFallback } from "./ui/avatar";
 
 const menuItems = [
   { icon: LayoutDashboard, label: "Início", path: "/" },
-  { icon: Church, label: "Igrejas", path: "/igrejas" },
-  { icon: Users, label: "Membros", path: "/membros" },
+  { icon: Church, label: "Igrejas", path: "/churches" },
+  { icon: Users, label: "Membros", path: "/members" },
 ];
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

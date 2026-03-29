@@ -1,3 +1,4 @@
+import { useCallback } from 'react';
 import { useICRAuth } from '../contexts/ICRAuthContext';
 import { API_BASE } from '../lib/api-config';
 
@@ -24,7 +25,7 @@ function normalizeApiPath(path: string): string {
 export function useICRApi() {
   const { token, logout } = useICRAuth();
 
-  const fetchApi = async <T>(path: string, options?: RequestInit): Promise<T> => {
+  const fetchApi = useCallback(async <T>(path: string, options?: RequestInit): Promise<T> => {
     const normalizedPath = normalizeApiPath(path);
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -59,7 +60,7 @@ export function useICRApi() {
     const text = await response.text();
     if (!text) return {} as T;
     return JSON.parse(text) as T;
-  };
+  }, [logout, token]);
 
   return { fetchApi };
 }
@@ -93,7 +94,8 @@ export interface Church {
 export interface Cell {
   id: number;
   name: string;
-  type?: string;
+  type?: number | string;
+  typeName?: string;
   churchId: number;
   church?: Church;
   responsibleId?: number;
@@ -104,20 +106,20 @@ export interface Family {
   id: number;
   name: string;
   cellId?: number;
-  cell?: Cell;
+  cellName?: string;
   churchId: number;
-  church?: Church;
+  churchName?: string;
   manId?: number;
-  man?: Member;
+  manName?: string;
   womanId?: number;
-  woman?: Member;
+  womanName?: string;
   weddingDate?: string;
 }
 
 export interface Member {
   id: number;
   name: string;
-  role?: string;
+  role?: number | string;
   roleName?: string;
   familyId?: number;
   familyName?: string;
@@ -127,7 +129,7 @@ export interface Member {
   hasBeenMarried?: boolean;
   spouseName?: string;
   weddingDate?: string;
-  gender?: string;
+  gender?: number | string;
   genderName?: string;
   class?: string;
   className?: string;
