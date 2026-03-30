@@ -111,7 +111,7 @@ export default function Home() {
 
   const sections: DashboardSection[] = [
     {
-      title: 'Federações, Igrejas e Comunidades Missionárias',
+      title: 'Areas, Igrejas e Comunidades Missionárias',
       cards: [
         { label: 'Total de Áreas', value: nationalDashboard?.totalFederations ?? 0 },
         { label: 'Igrejas', value: nationalDashboard?.totalChurches ?? 0 },
