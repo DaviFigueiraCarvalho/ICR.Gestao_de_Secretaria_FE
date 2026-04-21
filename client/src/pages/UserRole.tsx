@@ -8,7 +8,7 @@ interface Usuario {
   id: number;
   username: string;
   memberId: number | null;
-  memberName: string;
+  memberName: string | null;
   scope: number;
 }
 
@@ -64,7 +64,14 @@ function normalizeUsers(payload: unknown): Usuario[] {
       id: Number.isFinite(numericId) && numericId > 0 ? numericId : index + 1,
       username: toStringOrDash(row.username ?? row.login),
       memberId: Number.isFinite(numericMemberId) && numericMemberId > 0 ? numericMemberId : null,
-      memberName: toStringOrDash(row.memberName ?? row.name),
+      memberName:
+        typeof row.memberName === 'string' && row.memberName.trim()
+          ? row.memberName.trim()
+          : typeof row.churchMemberName === 'string' && row.churchMemberName.trim()
+            ? row.churchMemberName.trim()
+            : typeof row.federationMemberName === 'string' && row.federationMemberName.trim()
+              ? row.federationMemberName.trim()
+              : null,
       scope: Number.isFinite(numericScope) ? numericScope : 2,
     };
   });
@@ -129,6 +136,34 @@ export default function Usuarios() {
   const [deletingRoleId, setDeletingRoleId] = useState<number | null>(null);
 
   const activeRoles = useMemo(() => roles.filter((role) => role.active), [roles]);
+  const usersWithResolvedMemberName = useMemo(() => {
+    return data.map((user) => {
+      if (!user.memberId) {
+        return {
+          ...user,
+          memberName: user.memberName ?? '-',
+        };
+      }
+
+      const memberLookupName = members.find((member) => member.id === user.memberId)?.name?.trim();
+      const userMemberName = user.memberName?.trim();
+
+      if (memberLookupName) {
+        // When API returns username in memberName for restricted scopes, trust member lookup by memberId.
+        if (!userMemberName || userMemberName === '-' || userMemberName === user.username) {
+          return {
+            ...user,
+            memberName: memberLookupName,
+          };
+        }
+      }
+
+      return {
+        ...user,
+        memberName: userMemberName && userMemberName.length > 0 ? userMemberName : '-',
+      };
+    });
+  }, [data, members]);
 
   const loadUsers = async () => {
     setIsLoading(true);
@@ -348,7 +383,7 @@ export default function Usuarios() {
       label: 'ID Membro',
       render: (item) => (item.memberId ? String(item.memberId) : '-'),
     },
-    { key: 'memberName', label: 'Membro' },
+    { key: 'memberName', label: 'Membro', render: (item) => item.memberName || '-' },
     { key: 'scope', label: 'Escopo', render: (item) => scopeLabel(item.scope) },
     {
       key: 'roles',
@@ -368,7 +403,7 @@ export default function Usuarios() {
     <ICRLayout title="Usuários">
       <CRUDTable
         title="Usuários"
-        data={data}
+        data={usersWithResolvedMemberName}
         columns={columns}
         isLoading={isLoading}
         error={error}

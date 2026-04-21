@@ -135,6 +135,10 @@ export default function Membros() {
   const [cells, setCells] = useState<Cell[]>([]);
   const [federations, setFederations] = useState<Federation[]>([]);
   const [ministers, setMinisters] = useState<Minister[]>([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [serverPaginationEnabled, setServerPaginationEnabled] = useState(true);
   const [selectedFederationIds, setSelectedFederationIds] = useState<number[]>([]);
   const [selectedChurchIds, setSelectedChurchIds] = useState<number[]>([]);
   const [selectedCellIds, setSelectedCellIds] = useState<number[]>([]);
@@ -144,6 +148,8 @@ export default function Membros() {
 
   const shouldAutoCreateMinister = (role: number | '') => role === PASTOR_ROLE || role === PRESBITERO_ROLE;
   const isPresbiteroSelected = form.role === PRESBITERO_ROLE;
+  const isForbiddenError = (err: unknown) =>
+    err instanceof Error && (err.message.includes('403') || err.message.toLowerCase().includes('forbidden'));
 
   const handleMinisterCEPChange = async (value: string) => {
     const normalizedCEP = normalizeCEP(value);
@@ -205,28 +211,74 @@ export default function Membros() {
     setIsLoading(true);
     setError(null);
     try {
-      const [membersResult, familiesResult, churchesResult, cellsResult, federationsResult, ministersResult] = await Promise.all([
-        fetchApi<Member[]>('/api/members?page=1&pageSize=100'),
-        fetchApi<Family[]>('/api/families?page=1&pageSize=100'),
-        fetchApi<Church[]>('/api/churches'),
-        fetchApi<Cell[]>('/api/cells'),
-        fetchApi<Federation[]>('/api/federations'),
-        fetchApi<Minister[]>('/api/ministers?page=1&pageSize=200'),
-      ]);
-      setData(Array.isArray(membersResult) ? membersResult : []);
+      const [membersResult, familiesResult, churchesResult, cellsResult, federationsResult, ministersResult] = await Promise.all(
+        serverPaginationEnabled
+          ? [
+              fetchApi<Member[]>(`/api/members?page=${page}&pageSize=${pageSize}`),
+              fetchApi<Family[]>('/api/families?page=1&pageSize=100'),
+              fetchApi<Church[]>('/api/churches'),
+              fetchApi<Cell[]>('/api/cells'),
+              fetchApi<Federation[]>('/api/federations'),
+              fetchApi<Minister[]>('/api/ministers?page=1&pageSize=200'),
+            ]
+          : [
+              fetchApi<Member[]>('/api/members'),
+              fetchApi<Family[]>('/api/families?page=1&pageSize=100'),
+              fetchApi<Church[]>('/api/churches'),
+              fetchApi<Cell[]>('/api/cells'),
+              fetchApi<Federation[]>('/api/federations'),
+              fetchApi<Minister[]>('/api/ministers?page=1&pageSize=200'),
+            ],
+      );
+      const membersData = Array.isArray(membersResult) ? membersResult : [];
+
+      if (serverPaginationEnabled && page > 1 && membersData.length === 0) {
+        setPage((prev) => Math.max(1, prev - 1));
+        return;
+      }
+
+      setData(membersData);
+      setHasNextPage(serverPaginationEnabled && membersData.length === pageSize);
       setFamilies(Array.isArray(familiesResult) ? familiesResult : []);
       setChurches(Array.isArray(churchesResult) ? churchesResult : []);
       setCells(Array.isArray(cellsResult) ? cellsResult : []);
       setFederations(Array.isArray(federationsResult) ? federationsResult : []);
       setMinisters(Array.isArray(ministersResult) ? ministersResult : []);
     } catch (err) {
+      if (serverPaginationEnabled && isForbiddenError(err)) {
+        try {
+          const [membersResult, familiesResult, churchesResult, cellsResult, federationsResult, ministersResult] = await Promise.all([
+            fetchApi<Member[]>('/api/members'),
+            fetchApi<Family[]>('/api/families?page=1&pageSize=100'),
+            fetchApi<Church[]>('/api/churches'),
+            fetchApi<Cell[]>('/api/cells'),
+            fetchApi<Federation[]>('/api/federations'),
+            fetchApi<Minister[]>('/api/ministers?page=1&pageSize=200'),
+          ]);
+
+          setData(Array.isArray(membersResult) ? membersResult : []);
+          setHasNextPage(false);
+          setFamilies(Array.isArray(familiesResult) ? familiesResult : []);
+          setChurches(Array.isArray(churchesResult) ? churchesResult : []);
+          setCells(Array.isArray(cellsResult) ? cellsResult : []);
+          setFederations(Array.isArray(federationsResult) ? federationsResult : []);
+          setMinisters(Array.isArray(ministersResult) ? ministersResult : []);
+          setServerPaginationEnabled(false);
+          setPage(1);
+          return;
+        } catch (fallbackErr) {
+          setError(fallbackErr instanceof Error ? fallbackErr.message : 'Erro ao carregar membros');
+          return;
+        }
+      }
+
       setError(err instanceof Error ? err.message : 'Erro ao carregar membros');
     } finally {
       setIsLoading(false);
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [page, pageSize, serverPaginationEnabled]);
 
   const openAdd = () => {
     setEditItem(null);
@@ -430,38 +482,60 @@ export default function Membros() {
     });
   }, [data, scopedChurches, scopedFamilies, selectedCellIds, selectedChurchIds, selectedFederationIds]);
 
+  const handlePageSizeChange = (size: number) => {
+    const safeSize = Math.min(100, Math.max(1, size));
+    setPageSize(safeSize);
+    setPage(1);
+  };
+
+  const topFilters = (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      {!isLocalScope && !isFederatedScope && (
+        <MultiSmartSelect
+          label="Filtro por Federações"
+          selectedIds={selectedFederationIds}
+          onChange={setSelectedFederationIds}
+          items={federationOptions}
+          placeholder="Todas as federações"
+        />
+      )}
+      {!isLocalScope && (
+        <MultiSmartSelect
+          label="Filtro por Igrejas"
+          selectedIds={selectedChurchIds}
+          onChange={setSelectedChurchIds}
+          items={churchOptions}
+          placeholder="Todas as igrejas"
+        />
+      )}
+      <MultiSmartSelect
+        label="Filtro por Células"
+        selectedIds={selectedCellIds}
+        onChange={setSelectedCellIds}
+        items={cellOptions}
+        placeholder="Todas as células"
+      />
+    </div>
+  );
+
   return (
     <ICRLayout title="Membros">
-      <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-        {!isLocalScope && !isFederatedScope && (
-          <MultiSmartSelect
-            label="Filtro por Federações"
-            selectedIds={selectedFederationIds}
-            onChange={setSelectedFederationIds}
-            items={federationOptions}
-            placeholder="Todas as federações"
-          />
-        )}
-        {!isLocalScope && (
-          <MultiSmartSelect
-            label="Filtro por Igrejas"
-            selectedIds={selectedChurchIds}
-            onChange={setSelectedChurchIds}
-            items={churchOptions}
-            placeholder="Todas as igrejas"
-          />
-        )}
-        <MultiSmartSelect
-          label="Filtro por Células"
-          selectedIds={selectedCellIds}
-          onChange={setSelectedCellIds}
-          items={cellOptions}
-          placeholder="Todas as células"
-        />
-      </div>
       <CRUDTable
         title="Membros"
+        topContent={topFilters}
         data={filteredData}
+        pagination={!serverPaginationEnabled}
+        pageSize={pageSize}
+        onPageSizeChange={handlePageSizeChange}
+        pageSizeOptions={[10, 25, 50, 100]}
+        serverPagination={serverPaginationEnabled ? {
+          currentPage: page,
+          pageSize,
+          hasNextPage,
+          onPageChange: setPage,
+          onPageSizeChange: handlePageSizeChange,
+          pageSizeOptions: [10, 25, 50, 100],
+        } : undefined}
         columns={columns}
         isLoading={isLoading}
         error={error}

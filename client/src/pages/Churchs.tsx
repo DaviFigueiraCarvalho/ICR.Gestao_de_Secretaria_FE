@@ -37,6 +37,7 @@ export default function Igrejas() {
   const [federations, setFederations] = useState<Federation[]>([]);
   const [ministers, setMinisters] = useState<Minister[]>([]);
   const [cells, setCells] = useState<Cell[]>([]);
+  const [pageSize, setPageSize] = useState(50);
   const [selectedFederationIds, setSelectedFederationIds] = useState<number[]>([]);
   const scopeLevel = getScopeLevel(user?.scope, user?.username);
   const isFederatedScope = scopeLevel === 'federated';
@@ -51,7 +52,7 @@ export default function Igrejas() {
         fetchApi<Minister[]>('/api/ministers'),
         fetchApi<Cell[]>('/api/cells'),
       ]);
-      setData(churchesResult);
+      setData(Array.isArray(churchesResult) ? churchesResult : []);
       setFederations(federationsResult);
       setMinisters(ministersResult);
       setCells(cellsResult);
@@ -264,23 +265,33 @@ const handleSave = async () => {
   }, [isFederatedScope, lockedFederationId]);
 
   const setF = (key: keyof IgrejaForm, val: string | number) => setForm(prev => ({ ...prev, [key]: val }));
+  const handlePageSizeChange = (size: number) => {
+    const safeSize = Math.min(100, Math.max(1, size));
+    setPageSize(safeSize);
+  };
+
+  const topFilters = !isFederatedScope ? (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      <MultiSmartSelect
+        label="Filtro por Áreas"
+        selectedIds={selectedFederationIds}
+        onChange={setSelectedFederationIds}
+        items={federationOptions}
+        placeholder="Todas as áreas"
+      />
+    </div>
+  ) : null;
 
   return (
     <ICRLayout title="Igrejas">
-      {!isFederatedScope && (
-        <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-          <MultiSmartSelect
-            label="Filtro por Áreas"
-            selectedIds={selectedFederationIds}
-            onChange={setSelectedFederationIds}
-            items={federationOptions}
-            placeholder="Todas as áreas"
-          />
-        </div>
-      )}
       <CRUDTable
         title="Igrejas"
+        topContent={topFilters}
         data={filteredData}
+        pagination
+        pageSize={pageSize}
+        onPageSizeChange={handlePageSizeChange}
+        pageSizeOptions={[10, 25, 50, 100]}
         columns={columns}
         isLoading={isLoading}
         error={error}

@@ -77,6 +77,7 @@ export default function Celulas() {
   const [federations, setFederations] = useState<Federation[]>([]);
   const [ministers, setMinisters] = useState<Minister[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
+  const [pageSize, setPageSize] = useState(50);
   const [selectedFederationIds, setSelectedFederationIds] = useState<number[]>([]);
   const [selectedChurchIds, setSelectedChurchIds] = useState<number[]>([]);
   const scopeLevel = getScopeLevel(user?.scope, user?.username);
@@ -95,7 +96,7 @@ export default function Celulas() {
         fetchApi<Minister[]>('/api/ministers?page=1&pageSize=200'),
         fetchApi<Member[]>('/api/members'),
       ]);
-      setData(cellsResult);
+      setData(Array.isArray(cellsResult) ? cellsResult : []);
       setChurches(churchesResult);
       setFamilies(Array.isArray(familiesResult) ? familiesResult : []);
       setFederations(federationsResult);
@@ -280,10 +281,15 @@ export default function Celulas() {
     });
   }, [churches, data, scopedChurches, selectedChurchIds, selectedFederationIds]);
 
-  return (
-    <ICRLayout title="Células">
+  const handlePageSizeChange = (size: number) => {
+    const safeSize = Math.min(100, Math.max(1, size));
+    setPageSize(safeSize);
+  };
+
+  const topFilters = (
+    <>
       {!isLocalScope && !isFederatedScope && (
-        <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <MultiSmartSelect
             label="Filtro por Áreas"
             selectedIds={selectedFederationIds}
@@ -302,7 +308,7 @@ export default function Celulas() {
       )}
 
       {isFederatedScope && (
-        <div className="mb-4 grid grid-cols-1 md:grid-cols-1 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-1 gap-3">
           <MultiSmartSelect
             label="Filtro por Igrejas"
             selectedIds={selectedChurchIds}
@@ -312,9 +318,19 @@ export default function Celulas() {
           />
         </div>
       )}
+    </>
+  );
+
+  return (
+    <ICRLayout title="Células">
       <CRUDTable
         title="Células"
+        topContent={topFilters}
         data={filteredData}
+        pagination
+        pageSize={pageSize}
+        onPageSizeChange={handlePageSizeChange}
+        pageSizeOptions={[10, 25, 50, 100]}
         columns={columns}
         isLoading={isLoading}
         error={error}

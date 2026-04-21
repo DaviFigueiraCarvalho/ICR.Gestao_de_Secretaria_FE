@@ -1,4 +1,4 @@
-import { useState, ReactNode } from 'react';
+import { useEffect, useMemo, useState, ReactNode } from 'react';
 import { toast } from 'sonner';
 import { isPermissionError } from '@/lib/utils';
 import PermissionDeniedError from './PermissionDeniedError';
@@ -24,6 +24,19 @@ interface CRUDTableProps<T extends { id: number }> {
   searchPlaceholder?: string;
   emptyMessage?: string;
   addLabel?: string;
+  pagination?: boolean;
+  pageSize?: number;
+  onPageSizeChange?: (size: number) => void;
+  pageSizeOptions?: number[];
+  topContent?: ReactNode;
+  serverPagination?: {
+    currentPage: number;
+    pageSize: number;
+    hasNextPage: boolean;
+    onPageChange: (page: number) => void;
+    onPageSizeChange: (size: number) => void;
+    pageSizeOptions?: number[];
+  };
 }
 
 export default function CRUDTable<T extends { id: number }>({
@@ -40,9 +53,16 @@ export default function CRUDTable<T extends { id: number }>({
   searchPlaceholder = 'Buscar...',
   emptyMessage = 'Nenhum registro encontrado',
   addLabel = 'Adicionar',
+  pagination = false,
+  pageSize = 10,
+  onPageSizeChange,
+  pageSizeOptions,
+  topContent,
+  serverPagination,
 }: CRUDTableProps<T>) {
   const [search, setSearch] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<T | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const filteredData = searchable && search
     ? data.filter((item) =>
@@ -51,6 +71,73 @@ export default function CRUDTable<T extends { id: number }>({
         )
       )
     : data;
+
+  const totalPages = useMemo(() => {
+    if (!pagination) return 1;
+    return Math.max(1, Math.ceil(filteredData.length / pageSize));
+  }, [filteredData.length, pageSize, pagination]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, data]);
+
+  useEffect(() => {
+    if (!pagination) return;
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, pagination, totalPages]);
+
+  const paginatedData = useMemo(() => {
+    if (!pagination) return filteredData;
+
+    const startIndex = (currentPage - 1) * pageSize;
+    return filteredData.slice(startIndex, startIndex + pageSize);
+  }, [currentPage, filteredData, pageSize, pagination]);
+
+  const showingStart = paginatedData.length === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const showingEnd = paginatedData.length === 0
+    ? 0
+    : Math.min((currentPage - 1) * pageSize + paginatedData.length, filteredData.length);
+  const isServerPagination = Boolean(serverPagination);
+  const localPageSizeOptions = useMemo(() => {
+    const options = pageSizeOptions ?? [10, 25, 50, 100];
+    const uniqueSorted = Array.from(new Set(options))
+      .filter((size) => size > 0 && size <= 100)
+      .sort((a, b) => a - b);
+
+    if (pageSize <= 100 && !uniqueSorted.includes(pageSize)) {
+      uniqueSorted.push(pageSize);
+      uniqueSorted.sort((a, b) => a - b);
+    }
+
+    return uniqueSorted;
+  }, [pageSize, pageSizeOptions]);
+  const serverPageSizeOptions = useMemo(() => {
+    const options = serverPagination?.pageSizeOptions ?? [10, 25, 50, 100];
+    const uniqueSorted = Array.from(new Set(options))
+      .filter((size) => size > 0 && size <= 100)
+      .sort((a, b) => a - b);
+
+    if (
+      serverPagination?.pageSize &&
+      serverPagination.pageSize <= 100 &&
+      !uniqueSorted.includes(serverPagination.pageSize)
+    ) {
+      uniqueSorted.push(serverPagination.pageSize);
+      uniqueSorted.sort((a, b) => a - b);
+    }
+
+    return uniqueSorted;
+  }, [serverPagination?.pageSize, serverPagination?.pageSizeOptions]);
+
+  const serverShowingStart = data.length === 0 || !serverPagination
+    ? 0
+    : (serverPagination.currentPage - 1) * serverPagination.pageSize + 1;
+  const serverShowingEnd = data.length === 0 || !serverPagination
+    ? 0
+    : serverShowingStart + data.length - 1;
+  const showPaginationControls = (pagination && filteredData.length > 0) || isServerPagination;
 
   const handleDelete = async (item: T) => {
     if (onDelete) {
@@ -75,42 +162,134 @@ export default function CRUDTable<T extends { id: number }>({
     return String(val);
   };
 
+  const renderPaginationControls = (wrapperClassName: string) => {
+    if (isServerPagination && serverPagination) {
+      return (
+        <div className={wrapperClassName}>
+          <p className="text-white/50 font-['Nunito'] text-sm">
+            Mostrando {serverShowingStart}-{serverShowingEnd} | Página {serverPagination.currentPage}
+          </p>
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <label className="text-white/60 font-['Nunito'] text-sm">Itens por página</label>
+            <select
+              value={serverPagination.pageSize}
+              onChange={(e) => serverPagination.onPageSizeChange(Number(e.target.value))}
+              className="bg-[#2b2b2b] border border-white/20 rounded-lg px-3 py-1.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
+            >
+              {serverPageSizeOptions.map((size) => (
+                <option key={size} value={size}>{size}</option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => serverPagination.onPageChange(Math.max(1, serverPagination.currentPage - 1))}
+              disabled={serverPagination.currentPage === 1}
+              className="px-3 py-1.5 rounded-lg border border-white/20 text-white/70 hover:text-white hover:border-white/40 transition-colors font-['Nunito'] text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Anterior
+            </button>
+            <button
+              type="button"
+              onClick={() => serverPagination.onPageChange(serverPagination.currentPage + 1)}
+              disabled={!serverPagination.hasNextPage}
+              className="px-3 py-1.5 rounded-lg border border-white/20 text-white/70 hover:text-white hover:border-white/40 transition-colors font-['Nunito'] text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Próxima
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className={wrapperClassName}>
+        <p className="text-white/50 font-['Nunito'] text-sm">
+          Mostrando {showingStart}-{showingEnd} de {filteredData.length}
+        </p>
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          <label className="text-white/60 font-['Nunito'] text-sm">Itens por página</label>
+          <select
+            value={pageSize}
+            onChange={(e) => {
+              const nextSize = Number(e.target.value);
+              if (onPageSizeChange) {
+                onPageSizeChange(nextSize);
+              }
+              setCurrentPage(1);
+            }}
+            disabled={!onPageSizeChange}
+            className="bg-[#2b2b2b] border border-white/20 rounded-lg px-3 py-1.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+          >
+            {localPageSizeOptions.map((size) => (
+              <option key={size} value={size}>{size}</option>
+            ))}
+          </select>
+          <button
+            type="button"
+            onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+            disabled={currentPage === 1}
+            className="px-3 py-1.5 rounded-lg border border-white/20 text-white/70 hover:text-white hover:border-white/40 transition-colors font-['Nunito'] text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Anterior
+          </button>
+          <span className="text-white/60 font-['Nunito'] text-sm min-w-[96px] text-center">
+            Página {currentPage} de {totalPages}
+          </span>
+          <button
+            type="button"
+            onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+            disabled={currentPage >= totalPages}
+            className="px-3 py-1.5 rounded-lg border border-white/20 text-white/70 hover:text-white hover:border-white/40 transition-colors font-['Nunito'] text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Próxima
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-4 gap-3 flex-wrap">
-        <div className="flex items-center gap-3">
-          {searchable && (
-            <div className="relative">
-              <span className="material-icons absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-[18px]">search</span>
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={searchPlaceholder}
-                className="bg-[#2b2b2b] border border-white/20 rounded-lg pl-9 pr-4 py-2 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] transition-colors w-64"
-              />
-            </div>
-          )}
-          {onRefresh && (
+      {/* Sticky top controls */}
+      <div className="sticky top-0 z-30 -mx-2 sm:-mx-4 lg:-mx-6 px-2 sm:px-4 lg:px-6 pt-2 sm:pt-3 lg:pt-4 mb-4 bg-[#1c1c1c]/95 backdrop-blur border-b border-white/10">
+        {topContent && <div className="mb-3">{topContent}</div>}
+
+        <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+          <div className="flex items-center gap-3">
+            {searchable && (
+              <div className="relative">
+                <span className="material-icons absolute left-3 top-1/2 -translate-y-1/2 text-white/40 text-[18px]">search</span>
+                <input
+                  type="text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder={searchPlaceholder}
+                  className="bg-[#2b2b2b] border border-white/20 rounded-lg pl-9 pr-4 py-2 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] transition-colors w-64"
+                />
+              </div>
+            )}
+            {onRefresh && (
+              <button
+                onClick={onRefresh}
+                className="flex items-center gap-1 px-3 py-2 rounded-lg bg-[#2b2b2b] border border-white/20 text-white/60 hover:text-white hover:border-[#017158] transition-colors text-sm font-['Nunito']"
+              >
+                <span className="material-icons text-[16px]">refresh</span>
+                Atualizar
+              </button>
+            )}
+          </div>
+          {onAdd && (
             <button
-              onClick={onRefresh}
-              className="flex items-center gap-1 px-3 py-2 rounded-lg bg-[#2b2b2b] border border-white/20 text-white/60 hover:text-white hover:border-[#017158] transition-colors text-sm font-['Nunito']"
+              onClick={onAdd}
+              className="flex items-center gap-2 px-4 py-2 bg-[#017158] hover:bg-[#01a07e] text-white rounded-lg transition-colors font-['Nunito'] text-sm font-medium"
             >
-              <span className="material-icons text-[16px]">refresh</span>
-              Atualizar
+              <span className="material-icons text-[18px]">add</span>
+              {addLabel}
             </button>
           )}
         </div>
-        {onAdd && (
-          <button
-            onClick={onAdd}
-            className="flex items-center gap-2 px-4 py-2 bg-[#017158] hover:bg-[#01a07e] text-white rounded-lg transition-colors font-['Nunito'] text-sm font-medium"
-          >
-            <span className="material-icons text-[18px]">add</span>
-            {addLabel}
-          </button>
-        )}
+
+        {showPaginationControls && renderPaginationControls('mb-3 flex items-center justify-between gap-3 flex-wrap')}
       </div>
 
       {/* Table */}
@@ -161,7 +340,7 @@ export default function CRUDTable<T extends { id: number }>({
                 </tr>
               </thead>
               <tbody>
-                {filteredData.map((item, idx) => (
+                {paginatedData.map((item, idx) => (
                   <tr
                     key={item.id}
                     className={`border-b border-white/5 hover:bg-white/5 transition-colors ${
@@ -207,6 +386,8 @@ export default function CRUDTable<T extends { id: number }>({
           </div>
         )}
       </div>
+
+      {showPaginationControls && renderPaginationControls('mt-4 flex items-center justify-between gap-3 flex-wrap')}
 
       {/* Delete confirmation modal */}
       {deleteConfirm && (

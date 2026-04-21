@@ -29,6 +29,9 @@ export default function Familias() {
   const [form, setForm] = useState<FamiliaForm>({ name: '', churchId: '', cellId: '', manId: '', womanId: '', weddingDate: '' });
   const [saving, setSaving] = useState(false);
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [serverPaginationEnabled, setServerPaginationEnabled] = useState(true);
   const [churches, setChurches] = useState<Church[]>([]);
   const [cells, setCells] = useState<Cell[]>([]);
   const [federations, setFederations] = useState<Federation[]>([]);
@@ -40,6 +43,8 @@ export default function Familias() {
   const scopeLevel = getScopeLevel(user?.scope, user?.username);
   const isLocalScope = scopeLevel === 'local';
   const isFederatedScope = scopeLevel === 'federated';
+  const isForbiddenError = (err: unknown) =>
+    err instanceof Error && (err.message.includes('403') || err.message.toLowerCase().includes('forbidden'));
 
   useEffect(() => {
     const loadLookups = async () => {
@@ -68,17 +73,42 @@ export default function Familias() {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await fetchApi<Family[]>(`/api/families?page=${page}&pageSize=100`);
+      const result = await fetchApi<Family[]>(
+        serverPaginationEnabled
+          ? `/api/families?page=${page}&pageSize=${pageSize}`
+          : '/api/families',
+      );
       const familiesData = Array.isArray(result) ? result : [];
+
+      if (serverPaginationEnabled && page > 1 && familiesData.length === 0) {
+        setPage((prev) => Math.max(1, prev - 1));
+        return;
+      }
+
       setData(familiesData);
+      setHasNextPage(serverPaginationEnabled && familiesData.length === pageSize);
     } catch (err) {
+      if (serverPaginationEnabled && isForbiddenError(err)) {
+        try {
+          const fallbackResult = await fetchApi<Family[]>('/api/families');
+          setData(Array.isArray(fallbackResult) ? fallbackResult : []);
+          setHasNextPage(false);
+          setServerPaginationEnabled(false);
+          setPage(1);
+          return;
+        } catch (fallbackErr) {
+          setError(fallbackErr instanceof Error ? fallbackErr.message : 'Erro ao carregar famílias');
+          return;
+        }
+      }
+
       setError(err instanceof Error ? err.message : 'Erro ao carregar famílias');
     } finally {
       setIsLoading(false);
     }
   };
 
-  useEffect(() => { load(); }, [page]);
+  useEffect(() => { load(); }, [page, pageSize, serverPaginationEnabled]);
 
   const openAdd = () => {
     setEditItem(null);
@@ -273,38 +303,60 @@ export default function Familias() {
     });
   }, [scopedChurches, scopedFamilies, selectedCellIds, selectedChurchIds, selectedFederationIds]);
 
+  const handlePageSizeChange = (size: number) => {
+    const safeSize = Math.min(100, Math.max(1, size));
+    setPageSize(safeSize);
+    setPage(1);
+  };
+
+  const topFilters = (
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      {!isLocalScope && !isFederatedScope && (
+        <MultiSmartSelect
+          label="Filtro por Federações"
+          selectedIds={selectedFederationIds}
+          onChange={setSelectedFederationIds}
+          items={federationOptions}
+          placeholder="Todas as federações"
+        />
+      )}
+      {!isLocalScope && (
+        <MultiSmartSelect
+          label="Filtro por Igrejas"
+          selectedIds={selectedChurchIds}
+          onChange={setSelectedChurchIds}
+          items={churchOptions}
+          placeholder="Todas as igrejas"
+        />
+      )}
+      <MultiSmartSelect
+        label="Filtro por Células"
+        selectedIds={selectedCellIds}
+        onChange={setSelectedCellIds}
+        items={cellOptions}
+        placeholder="Todas as células"
+      />
+    </div>
+  );
+
   return (
     <ICRLayout title="Famílias">
-      <div className="mb-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-        {!isLocalScope && !isFederatedScope && (
-          <MultiSmartSelect
-            label="Filtro por Federações"
-            selectedIds={selectedFederationIds}
-            onChange={setSelectedFederationIds}
-            items={federationOptions}
-            placeholder="Todas as federações"
-          />
-        )}
-        {!isLocalScope && (
-          <MultiSmartSelect
-            label="Filtro por Igrejas"
-            selectedIds={selectedChurchIds}
-            onChange={setSelectedChurchIds}
-            items={churchOptions}
-            placeholder="Todas as igrejas"
-          />
-        )}
-        <MultiSmartSelect
-          label="Filtro por Células"
-          selectedIds={selectedCellIds}
-          onChange={setSelectedCellIds}
-          items={cellOptions}
-          placeholder="Todas as células"
-        />
-      </div>
       <CRUDTable
         title="Famílias"
+        topContent={topFilters}
         data={filteredData}
+        pagination={!serverPaginationEnabled}
+        pageSize={pageSize}
+        onPageSizeChange={handlePageSizeChange}
+        pageSizeOptions={[10, 25, 50, 100]}
+        serverPagination={serverPaginationEnabled ? {
+          currentPage: page,
+          pageSize,
+          hasNextPage,
+          onPageChange: setPage,
+          onPageSizeChange: handlePageSizeChange,
+          pageSizeOptions: [10, 25, 50, 100],
+        } : undefined}
         columns={columns}
         isLoading={isLoading}
         error={error}

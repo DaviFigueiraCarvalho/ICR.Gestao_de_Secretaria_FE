@@ -98,6 +98,12 @@ const extractUserFromLoginResponse = (payload: unknown, fallbackUsername: string
   const memberName =
     (typeof userData.memberName === 'string' && userData.memberName.trim())
       ? userData.memberName
+      : (typeof userData.churchMemberName === 'string' && userData.churchMemberName.trim())
+        ? userData.churchMemberName
+        : (typeof userData.federationMemberName === 'string' && userData.federationMemberName.trim())
+          ? userData.federationMemberName
+          : (userData.member && typeof userData.member === 'object' && typeof (userData.member as Record<string, unknown>).name === 'string' && ((userData.member as Record<string, unknown>).name as string).trim())
+            ? ((userData.member as Record<string, unknown>).name as string)
       : (typeof userData.name === 'string' && userData.name.trim())
         ? userData.name
         : username;
@@ -125,7 +131,10 @@ const extractUserPatch = (payload: unknown): Partial<ICRUser> => {
     churchId: parseIdFromRecord(row, ['churchId', 'churchID', 'church_id', 'church']),
     federationId: parseIdFromRecord(row, ['federationId', 'federationID', 'federation_id', 'federation']),
     username: parseStringOrUndefined(row.username),
-    memberName: parseStringOrUndefined(row.memberName) ?? parseStringOrUndefined(row.name),
+    memberName:
+      parseStringOrUndefined(row.memberName) ??
+      parseStringOrUndefined(row.churchMemberName) ??
+      parseStringOrUndefined(row.federationMemberName),
     scope: row.scope ?? row.userScope ?? row.minimalScope,
   };
 };
@@ -179,6 +188,11 @@ const enrichUserChurchContext = async (userInfo: ICRUser, authToken: string): Pr
 
     const memberPayload = await memberResponse.json().catch(() => null);
     const memberRow = toRecord(memberPayload);
+    const resolvedMemberName =
+      parseStringOrUndefined(memberRow.name) ??
+      parseStringOrUndefined(memberRow.memberName) ??
+      parseStringOrUndefined(memberRow.churchMemberName) ??
+      parseStringOrUndefined(memberRow.federationMemberName);
     const resolvedFamilyId =
       parseNumberOrUndefined(memberRow.familyId) ??
       parseNumberOrUndefined(memberRow.familyID) ??
@@ -188,6 +202,10 @@ const enrichUserChurchContext = async (userInfo: ICRUser, authToken: string): Pr
     if (typeof resolvedFamilyId !== 'number') {
       return {
         ...userInfo,
+        memberName:
+          resolvedMemberName && (userInfo.memberName === userInfo.username || !userInfo.memberName)
+            ? resolvedMemberName
+            : userInfo.memberName,
         familyId: userInfo.familyId,
         churchId: userInfo.churchId,
       };
@@ -203,6 +221,10 @@ const enrichUserChurchContext = async (userInfo: ICRUser, authToken: string): Pr
     if (!familyResponse.ok) {
       return {
         ...userInfo,
+        memberName:
+          resolvedMemberName && (userInfo.memberName === userInfo.username || !userInfo.memberName)
+            ? resolvedMemberName
+            : userInfo.memberName,
         familyId: resolvedFamilyId,
       };
     }
@@ -233,6 +255,10 @@ const enrichUserChurchContext = async (userInfo: ICRUser, authToken: string): Pr
 
     return {
       ...userInfo,
+      memberName:
+        resolvedMemberName && (userInfo.memberName === userInfo.username || !userInfo.memberName)
+          ? resolvedMemberName
+          : userInfo.memberName,
       familyId: resolvedFamilyId,
       churchId: resolvedChurchId,
       federationId: resolvedFederationId,
