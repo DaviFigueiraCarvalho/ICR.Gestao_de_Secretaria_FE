@@ -152,6 +152,7 @@ export interface Minister {
   churchMemberName?: string;
   federationMemberName?: string;
   memberBirthday?: string;
+  memberPhone?: string;
   memberWifeName?: string;
   memberWeddingDate?: string;
   cpf?: string;

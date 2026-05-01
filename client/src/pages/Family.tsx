@@ -7,6 +7,14 @@ import { useICRAuth } from '../contexts/ICRAuthContext';
 import { buildLocalChurchFallback, getScopeLevel, resolveScopeRestrictions } from '../lib/scope-access';
 import { useICRApi, Family, Church, Cell, Federation, Member, Minister } from '../hooks/useICRApi';
 import { settledValue } from '@/lib/utils';
+import {
+  GENDER_FEMALE,
+  GENDER_MALE,
+  PASTOR_ROLE,
+  PRESBITERO_ROLE,
+  getMemberRoleOptionsForGender,
+  isMaleOnlyMemberRole,
+} from '../lib/member-roles';
 import { toast } from 'sonner';
 
 interface FamiliaForm {
@@ -26,27 +34,38 @@ interface FamilyMemberDraft {
   role: number | '';
 }
 
-const MEMBER_ROLE_OPTIONS = [
-  { value: 1, label: 'Pastor' },
-  { value: 2, label: 'Presbitero' },
-  { value: 3, label: 'Diacono' },
-  { value: 4, label: 'Obreiro' },
-  { value: 5, label: 'Midias' },
-  { value: 6, label: 'Louvor' },
-  { value: 7, label: 'Som / Projecao' },
-  { value: 8, label: 'Secretaria / Integracao' },
-  { value: 9, label: 'Ensino' },
-  { value: 10, label: 'Evangelizacao / Social' },
-  { value: 11, label: 'Familias' },
-  { value: 12, label: 'Outros' },
-];
+interface MinistroInlineForm {
+  cpf: string;
+  email: string;
+  cardValidity: string;
+  presbiterOrdinationDate: string;
+  ministerOrdinationDate: string;
+  zipCode: string;
+  street: string;
+  number: string;
+  city: string;
+  state: string;
+}
+
+const EMPTY_MINISTER_FORM: MinistroInlineForm = {
+  cpf: '',
+  email: '',
+  cardValidity: '',
+  presbiterOrdinationDate: '',
+  ministerOrdinationDate: '',
+  zipCode: '',
+  street: '',
+  number: '',
+  city: '',
+  state: '',
+};
 
 const createEmptyFamilyMemberDraft = (enabled = true): FamilyMemberDraft => ({
   enabled,
   name: '',
   birthDate: '',
   cellPhone: '',
-  role: '',
+  role: 0,
 });
 
 export default function Familias() {
@@ -65,6 +84,7 @@ export default function Familias() {
   const [createWomanMember, setCreateWomanMember] = useState(true);
   const [manDraft, setManDraft] = useState<FamilyMemberDraft>(createEmptyFamilyMemberDraft(true));
   const [womanDraft, setWomanDraft] = useState<FamilyMemberDraft>(createEmptyFamilyMemberDraft(true));
+  const [manMinisterForm, setManMinisterForm] = useState<MinistroInlineForm>(EMPTY_MINISTER_FORM);
   const [saving, setSaving] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
@@ -83,6 +103,81 @@ export default function Familias() {
   const isFederatedScope = scopeLevel === 'federated';
   const isForbiddenError = (err: unknown) =>
     err instanceof Error && (err.message.includes('403') || err.message.toLowerCase().includes('forbidden'));
+
+  const shouldAutoCreateMinister = (role: number | '') => role === PASTOR_ROLE || role === PRESBITERO_ROLE;
+
+  const normalizePhone = (value: string): string => value.replace(/\D/g, '').slice(0, 11);
+  const normalizeCPF = (value: string): string => value.replace(/\D/g, '').slice(0, 11);
+  const normalizeCEP = (value: string): string => value.replace(/\D/g, '').slice(0, 8);
+
+  const formatCPF = (value: string): string => {
+    const digits = normalizeCPF(value);
+    if (digits.length <= 3) return digits;
+    if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+    if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+    return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+  };
+
+  const formatCEP = (value: string): string => {
+    const digits = normalizeCEP(value);
+    if (digits.length <= 5) return digits;
+    return `${digits.slice(0, 5)}-${digits.slice(5)}`;
+  };
+
+  const handleManMinisterCEPChange = async (value: string) => {
+    const normalizedCEP = normalizeCEP(value);
+    setManMinisterForm((prev) => ({ ...prev, zipCode: normalizedCEP }));
+
+    if (normalizedCEP.length === 8) {
+      const cepData = await fetchCEP(value);
+      if (cepData) {
+        setManMinisterForm((prev) => ({
+          ...prev,
+          street: cepData.street,
+          city: cepData.city,
+          state: cepData.state,
+        }));
+        toast.success('Endereco do ministro preenchido automaticamente');
+      }
+    }
+  };
+
+  const saveMinisterForMember = async (memberId: number) => {
+    const ministerBody: Record<string, unknown> = {
+      memberId,
+      cpf: manMinisterForm.cpf || '',
+      email: manMinisterForm.email || '',
+      cardValidity: manMinisterForm.cardValidity || undefined,
+      presbiterOrdinationDate: manMinisterForm.presbiterOrdinationDate || undefined,
+      ministerOrdinationDate: manMinisterForm.ministerOrdinationDate || undefined,
+      address: {
+        zipCode: manMinisterForm.zipCode || '',
+        street: manMinisterForm.street || '',
+        number: manMinisterForm.number || '',
+        city: manMinisterForm.city || '',
+        state: manMinisterForm.state || '',
+      },
+    };
+
+    const ministersResult = await fetchApi<Minister[]>('/api/ministers?page=1&pageSize=100').catch(() => []);
+    const existingMinister = Array.isArray(ministersResult)
+      ? ministersResult.find((minister) => minister.memberId === memberId)
+      : undefined;
+
+    if (existingMinister?.id) {
+      await fetchApi(`/api/ministers/${existingMinister.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(ministerBody),
+      });
+      return 'updated';
+    }
+
+    await fetchApi('/api/ministers', {
+      method: 'POST',
+      body: JSON.stringify(ministerBody),
+    });
+    return 'created';
+  };
 
   useEffect(() => {
     const loadLookups = async () => {
@@ -177,6 +272,7 @@ export default function Familias() {
     setCreateWomanMember(true);
     setManDraft(createEmptyFamilyMemberDraft(true));
     setWomanDraft(createEmptyFamilyMemberDraft(true));
+    setManMinisterForm(EMPTY_MINISTER_FORM);
     setShowModal(true);
   };
 
@@ -272,6 +368,7 @@ export default function Familias() {
     setCreateWomanMember(false);
     setManDraft(createEmptyFamilyMemberDraft(false));
     setWomanDraft(createEmptyFamilyMemberDraft(false));
+    setManMinisterForm(EMPTY_MINISTER_FORM);
     setShowModal(true);
   };
 
@@ -285,7 +382,7 @@ export default function Familias() {
         hasBeenMarried: true,
         birthDate: draft.birthDate || undefined,
         cellPhone: draft.cellPhone || undefined,
-        role: draft.role !== '' ? Number(draft.role) : undefined,
+        role: Number(draft.role || 0),
       }),
     });
 
@@ -320,6 +417,11 @@ export default function Familias() {
         toast.error('Informe o nome da mulher para criar o membro');
         return;
       }
+
+      if (createWomanMember && isMaleOnlyMemberRole(womanDraft.role)) {
+        toast.error('A esposa não pode receber cargo exclusivo de homem');
+        return;
+      }
     }
 
     setSaving(true);
@@ -346,6 +448,15 @@ export default function Familias() {
 
         const createdManId = createManMember ? await createMemberForFamily(familyId, 1, manDraft) : undefined;
         const createdWomanId = createWomanMember ? await createMemberForFamily(familyId, 2, womanDraft) : undefined;
+
+        if (createdManId && shouldAutoCreateMinister(manDraft.role)) {
+          const ministerResult = await saveMinisterForMember(createdManId);
+          if (ministerResult === 'created') {
+            toast.success('Cadastro de ministro do marido criado no formulario adicional');
+          } else {
+            toast.success('Cadastro de ministro do marido atualizado no formulario adicional');
+          }
+        }
 
         if (createdManId || createdWomanId) {
           await fetchApi(`/api/families/${familyId}`, {
@@ -601,8 +712,8 @@ export default function Familias() {
                           disabled={!createManMember}
                           className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
                         >
-                          <option value="">Sem função</option>
-                          {MEMBER_ROLE_OPTIONS.map((option) => (
+                          <option value={0}>Sem função</option>
+                          {getMemberRoleOptionsForGender(GENDER_MALE).filter((option) => option.value !== 0).map((option) => (
                             <option key={option.value} value={option.value}>
                               {option.label}
                             </option>
@@ -610,6 +721,132 @@ export default function Familias() {
                         </select>
                       </div>
                     </div>
+
+                    {shouldAutoCreateMinister(manDraft.role) && (
+                      <div className="border-t border-white/10 pt-4 space-y-4">
+                        <p className="text-white/50 text-xs font-['Nunito'] uppercase tracking-wider">Dados de Ministro do marido</p>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">CPF</label>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              maxLength={14}
+                              value={formatCPF(manMinisterForm.cpf)}
+                              onChange={(event) => setManMinisterForm((prev) => ({ ...prev, cpf: normalizeCPF(event.target.value) }))}
+                              disabled={!createManMember}
+                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                              placeholder="000.000.000-00"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">E-mail</label>
+                            <input
+                              type="email"
+                              value={manMinisterForm.email}
+                              onChange={(event) => setManMinisterForm((prev) => ({ ...prev, email: event.target.value }))}
+                              disabled={!createManMember}
+                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                              placeholder="email@exemplo.com"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Validade Carteira</label>
+                            <input
+                              type="date"
+                              value={manMinisterForm.cardValidity}
+                              onChange={(event) => setManMinisterForm((prev) => ({ ...prev, cardValidity: event.target.value }))}
+                              disabled={!createManMember}
+                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Ordenação Presbítero</label>
+                            <input
+                              type="date"
+                              value={manMinisterForm.presbiterOrdinationDate}
+                              onChange={(event) => setManMinisterForm((prev) => ({ ...prev, presbiterOrdinationDate: event.target.value }))}
+                              disabled={!createManMember}
+                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                            />
+                          </div>
+                          <div className="col-span-2">
+                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Ordenação a Pastor</label>
+                            <input
+                              type="date"
+                              value={manMinisterForm.ministerOrdinationDate}
+                              onChange={(event) => setManMinisterForm((prev) => ({ ...prev, ministerOrdinationDate: event.target.value }))}
+                              disabled={!createManMember || manDraft.role === PRESBITERO_ROLE}
+                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">CEP</label>
+                            <input
+                              type="text"
+                              value={formatCEP(manMinisterForm.zipCode)}
+                              onChange={(event) => handleManMinisterCEPChange(event.target.value)}
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              maxLength={9}
+                              disabled={!createManMember}
+                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                              placeholder="00000-000"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Número</label>
+                            <input
+                              type="text"
+                              value={manMinisterForm.number}
+                              onChange={(event) => setManMinisterForm((prev) => ({ ...prev, number: event.target.value }))}
+                              disabled={!createManMember}
+                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                              placeholder="Nº"
+                            />
+                          </div>
+                          <div className="col-span-2">
+                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Rua</label>
+                            <input
+                              type="text"
+                              value={manMinisterForm.street}
+                              onChange={(event) => setManMinisterForm((prev) => ({ ...prev, street: event.target.value }))}
+                              disabled={!createManMember}
+                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                              placeholder="Nome da rua"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Cidade</label>
+                            <input
+                              type="text"
+                              value={manMinisterForm.city}
+                              onChange={(event) => setManMinisterForm((prev) => ({ ...prev, city: event.target.value }))}
+                              disabled={!createManMember}
+                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                              placeholder="Cidade"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Estado</label>
+                            <input
+                              type="text"
+                              value={manMinisterForm.state}
+                              onChange={(event) => setManMinisterForm((prev) => ({ ...prev, state: event.target.value }))}
+                              disabled={!createManMember}
+                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                              placeholder="UF"
+                              maxLength={2}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-4">
@@ -669,8 +906,8 @@ export default function Familias() {
                           disabled={!createWomanMember}
                           className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
                         >
-                          <option value="">Sem função</option>
-                          {MEMBER_ROLE_OPTIONS.map((option) => (
+                          <option value={0}>Sem função</option>
+                          {getMemberRoleOptionsForGender(GENDER_FEMALE).filter((option) => option.value !== 0).map((option) => (
                             <option key={option.value} value={option.value}>
                               {option.label}
                             </option>

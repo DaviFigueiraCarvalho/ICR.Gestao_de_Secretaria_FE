@@ -8,6 +8,15 @@ import { buildLocalChurchFallback, getScopeLevel, resolveScopeRestrictions } fro
 import { useICRApi, Member, Family, Church, Cell, Federation, Minister } from '../hooks/useICRApi';
 import { settledValue } from '@/lib/utils';
 import { useViaCEP } from '../hooks/useViaCEP';
+import {
+  GENDER_FEMALE,
+  PASTOR_ROLE,
+  PRESBITERO_ROLE,
+  getMemberRoleLabel,
+  getMemberRoleOptionsForGender,
+  getMemberRoleValue,
+  isMaleOnlyMemberRole,
+} from '../lib/member-roles';
 import { toast } from 'sonner';
 
 interface MembroForm {
@@ -32,45 +41,6 @@ interface MinistroInlineForm {
   city: string;
   state: string;
 }
-
-const MEMBER_ROLE_OPTIONS = [
-  { value: 1, label: 'Pastor' },
-  { value: 2, label: 'Presbitero' },
-  { value: 3, label: 'Diacono' },
-  { value: 4, label: 'Obreiro' },
-  { value: 5, label: 'Midias' },
-  { value: 6, label: 'Louvor' },
-  { value: 7, label: 'Som / Projecao' },
-  { value: 8, label: 'Secretaria / Integracao' },
-  { value: 9, label: 'Ensino' },
-  { value: 10, label: 'Evangelizacao / Social' },
-  { value: 11, label: 'Familias' },
-  { value: 12, label: 'Outros' },
-];
-
-const PASTOR_ROLE = 1;
-const PRESBITERO_ROLE = 2;
-
-const getMemberRoleValue = (value: unknown): number | '' => {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!trimmed) return '';
-    const numeric = Number(trimmed);
-    return Number.isFinite(numeric) ? numeric : '';
-  }
-  return '';
-};
-
-const getMemberRoleLabel = (role: unknown, roleName?: string): string => {
-  if (roleName?.trim()) return roleName;
-  const numericRole = getMemberRoleValue(role);
-  if (numericRole === '') {
-    if (typeof role === 'string' && role.trim()) return role;
-    return '-';
-  }
-  return MEMBER_ROLE_OPTIONS.find((option) => option.value === numericRole)?.label ?? `Cargo ${numericRole}`;
-};
 
 const normalizePhone = (value: string): string => value.replace(/\D/g, '').slice(0, 11);
 const normalizeCPF = (value: string): string => value.replace(/\D/g, '').slice(0, 11);
@@ -143,6 +113,7 @@ export default function Membros() {
   const [selectedFederationIds, setSelectedFederationIds] = useState<number[]>([]);
   const [selectedChurchIds, setSelectedChurchIds] = useState<number[]>([]);
   const [selectedCellIds, setSelectedCellIds] = useState<number[]>([]);
+  const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const scopeLevel = getScopeLevel(user?.scope, user?.username);
   const isLocalScope = scopeLevel === 'local';
   const isFederatedScope = scopeLevel === 'federated';
@@ -168,6 +139,14 @@ export default function Membros() {
         }));
         toast.success('Endereco de ministro preenchido automaticamente');
       }
+    }
+  };
+
+  const handleGenderChange = (gender: number) => {
+    setF('gender', gender);
+
+    if (gender === GENDER_FEMALE && isMaleOnlyMemberRole(form.role)) {
+      setF('role', 0);
     }
   };
 
@@ -248,7 +227,7 @@ export default function Membros() {
           ]);
 
           const [fallbackMembersResult, fallbackFamiliesResult, fallbackChurchesResult, fallbackCellsResult, fallbackFederationsResult, fallbackMinistersResult] = fallbackResults;
-          const fallbackMembersData = settledValue(fallbackMembersResult) ?? [];
+          const fallbackMembersData = (settledValue(fallbackMembersResult) ?? []) as Member[];
 
           if (page > 1 && fallbackMembersData.length === 0) {
             setPage((prev) => Math.max(1, prev - 1));
@@ -257,11 +236,11 @@ export default function Membros() {
 
           setData(fallbackMembersData);
           setHasNextPage(false);
-          setFamilies(settledValue(fallbackFamiliesResult) ?? []);
-          setChurches(settledValue(fallbackChurchesResult) ?? []);
-          setCells(settledValue(fallbackCellsResult) ?? []);
-          setFederations(settledValue(fallbackFederationsResult) ?? []);
-          setMinisters(settledValue(fallbackMinistersResult) ?? []);
+          setFamilies((settledValue(fallbackFamiliesResult) ?? []) as Family[]);
+          setChurches((settledValue(fallbackChurchesResult) ?? []) as Church[]);
+          setCells((settledValue(fallbackCellsResult) ?? []) as Cell[]);
+          setFederations((settledValue(fallbackFederationsResult) ?? []) as Federation[]);
+          setMinisters((settledValue(fallbackMinistersResult) ?? []) as Minister[]);
           setServerPaginationEnabled(false);
           setPage(1);
           return;
@@ -270,7 +249,7 @@ export default function Membros() {
         throw membersResult.reason;
       }
 
-      const membersData = Array.isArray(membersResult.value) ? membersResult.value : [];
+      const membersData = Array.isArray(membersResult.value) ? (membersResult.value as Member[]) : [];
 
       if (serverPaginationEnabled && page > 1 && membersData.length === 0) {
         setPage((prev) => Math.max(1, prev - 1));
@@ -279,11 +258,11 @@ export default function Membros() {
 
       setData(membersData);
       setHasNextPage(serverPaginationEnabled && membersData.length === pageSize);
-      setFamilies(settledValue(familiesResult) ?? []);
-      setChurches(settledValue(churchesResult) ?? []);
-      setCells(settledValue(cellsResult) ?? []);
-      setFederations(settledValue(federationsResult) ?? []);
-      setMinisters(settledValue(ministersResult) ?? []);
+      setFamilies((settledValue(familiesResult) ?? []) as Family[]);
+      setChurches((settledValue(churchesResult) ?? []) as Church[]);
+      setCells((settledValue(cellsResult) ?? []) as Cell[]);
+      setFederations((settledValue(federationsResult) ?? []) as Federation[]);
+      setMinisters((settledValue(ministersResult) ?? []) as Minister[]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar membros');
     } finally {
@@ -295,7 +274,7 @@ export default function Membros() {
 
   const openAdd = () => {
     setEditItem(null);
-    setForm({ name: '', familyId: '', gender: 1, birthDate: '', hasBeenMarried: false, role: '', cellPhone: '' });
+    setForm({ name: '', familyId: '', gender: 1, birthDate: '', hasBeenMarried: false, role: 0, cellPhone: '' });
     setMinisterForm(EMPTY_MINISTER_FORM);
     setShowModal(true);
   };
@@ -308,7 +287,7 @@ export default function Membros() {
       gender: getGenderValue(item.gender),
       birthDate: item.birthDate ? item.birthDate.split('T')[0] : '',
       hasBeenMarried: item.hasBeenMarried || false,
-      role: getMemberRoleValue(item.role),
+      role: getMemberRoleValue(item.role) === '' ? 0 : getMemberRoleValue(item.role),
       cellPhone: normalizePhone(item.cellPhone || ''),
     });
     setMinisterForm(EMPTY_MINISTER_FORM);
@@ -326,6 +305,11 @@ export default function Membros() {
     const normalizedCellPhone = normalizePhone(form.cellPhone);
     if (normalizedCellPhone && normalizedCellPhone.length !== 11) {
       toast.error('Telefone deve conter 11 dígitos (DDD + número)');
+      return;
+    }
+
+    if (form.gender === GENDER_FEMALE && isMaleOnlyMemberRole(form.role)) {
+      toast.error('Essa função só pode ser atribuída a homens');
       return;
     }
 
@@ -351,7 +335,7 @@ export default function Membros() {
       };
       if (form.familyId) body.familyId = Number(form.familyId);
       if (form.birthDate) body.birthDate = form.birthDate;
-      if (form.role !== '') body.role = Number(form.role);
+      body.role = Number(form.role);
       if (normalizedCellPhone) body.cellPhone = normalizedCellPhone;
 
       let memberId = editItem?.id;
@@ -406,6 +390,61 @@ export default function Membros() {
 
   const setF = (key: keyof MembroForm, val: string | number | boolean) => setForm(prev => ({ ...prev, [key]: val }));
   const setMinisterF = (key: keyof MinistroInlineForm, val: string) => setMinisterForm((prev) => ({ ...prev, [key]: val }));
+  const availableRoleOptions = getMemberRoleOptionsForGender(form.gender);
+
+  const selectedMemberCard = selectedMember ? (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-2xl rounded-3xl border border-white/10 bg-[#202020] shadow-2xl">
+        <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
+          <div>
+            <p className="text-white/50 text-xs uppercase tracking-[0.2em] font-['Nunito']">Panorama geral do membro</p>
+            <h3 className="text-white text-2xl font-['Nunito'] font-semibold">{selectedMember.name || 'Membro'}</h3>
+          </div>
+          <button onClick={() => setSelectedMember(null)} className="text-white/50 hover:text-white transition-colors">
+            <span className="material-icons">close</span>
+          </button>
+        </div>
+
+        <div className="grid gap-4 px-6 py-6 md:grid-cols-[1.2fr_0.8fr]">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <InfoTile label="Função" value={getMemberRoleLabel(selectedMember.role, selectedMember.roleName)} />
+            <InfoTile label="Gênero" value={selectedMember.genderName || (getGenderValue(selectedMember.gender) === 1 ? 'Masculino' : 'Feminino')} />
+            <InfoTile label="Telefone" value={selectedMember.cellPhone || '-'} />
+            <InfoTile label="Nascimento" value={selectedMember.birthDate ? new Date(selectedMember.birthDate).toLocaleDateString('pt-BR') : '-'} />
+            <InfoTile label="Família" value={selectedMember.familyName || '-'} />
+            <InfoTile label="Igreja" value={selectedMember.familyChurchName || '-'} />
+            <InfoTile label="Célula" value={selectedMember.familyCellName || '-'} />
+            <InfoTile label="Classe" value={selectedMember.className || '-'} />
+          </div>
+
+          <div className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+            <InfoTile label="Já foi casado(a)" value={selectedMember.hasBeenMarried ? 'Sim' : 'Não'} compact />
+            <InfoTile label="Cônjuge" value={selectedMember.spouseName || '-'} compact />
+            <InfoTile label="Data do casamento" value={selectedMember.weddingDate ? new Date(selectedMember.weddingDate).toLocaleDateString('pt-BR') : '-'} compact />
+            <InfoTile label="ID" value={String(selectedMember.id)} compact />
+          </div>
+        </div>
+
+        <div className="flex justify-end border-t border-white/10 px-6 py-4">
+          <button
+            onClick={() => setSelectedMember(null)}
+            className="rounded-xl border border-white/15 bg-white/5 px-4 py-2 text-sm font-['Nunito'] text-white hover:border-white/30 transition-colors"
+          >
+            Fechar
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  function InfoTile({ label, value, compact = false }: { label: string; value: string; compact?: boolean }) {
+    return (
+      <div className={`rounded-xl border border-white/10 ${compact ? 'bg-black/10 px-3 py-2' : 'bg-black/10 p-4'}`}>
+        <p className="text-white/45 text-[11px] uppercase tracking-[0.2em] font-['Nunito']">{label}</p>
+        <p className={`text-white ${compact ? 'text-sm' : 'text-base'} font-['Nunito'] break-words`}>{value}</p>
+      </div>
+    );
+  }
 
   const restrictions = useMemo(
     () => resolveScopeRestrictions({
@@ -552,6 +591,8 @@ export default function Membros() {
         columns={columns}
         isLoading={isLoading}
         error={error}
+        onView={setSelectedMember}
+        viewLabel="Panorama geral"
         onAdd={openAdd}
         onEdit={openEdit}
         onDelete={handleDelete}
@@ -560,6 +601,8 @@ export default function Membros() {
         emptyMessage="Nenhum membro encontrado"
         addLabel="Novo Membro"
       />
+
+      {selectedMemberCard}
 
       {showModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
@@ -583,7 +626,7 @@ export default function Membros() {
               <div className="grid gap-3">
                 <div>
                   <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Gênero</label>
-                  <select value={form.gender} onChange={e => setF('gender', Number(e.target.value))}
+                  <select value={form.gender} onChange={e => handleGenderChange(Number(e.target.value))}
                     className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]">
                     <option value={1}>Masculino</option>
                     <option value={2}>Feminino</option>
@@ -624,8 +667,8 @@ export default function Membros() {
                   onChange={e => setF('role', e.target.value === '' ? '' : Number(e.target.value))}
                   className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                 >
-                  <option value="">Selecione uma função</option>
-                  {MEMBER_ROLE_OPTIONS.map((roleOption) => (
+                  <option value={0}>Sem função</option>
+                  {availableRoleOptions.filter((roleOption) => roleOption.value !== 0).map((roleOption) => (
                     <option key={roleOption.value} value={roleOption.value}>{roleOption.label}</option>
                   ))}
                 </select>

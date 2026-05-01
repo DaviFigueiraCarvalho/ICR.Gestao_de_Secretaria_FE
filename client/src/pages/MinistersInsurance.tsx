@@ -218,7 +218,7 @@ export default function MinistersInsurance() {
     insuredMinisters.forEach((minister, index) => {
       const name = normalizePdfText(minister.memberName || '-');
       const cpf = normalizePdfText(minister.cpf || '-');
-      const phone = normalizePdfText(minister.member?.cellPhone || '-');
+      const phone = normalizePdfText(minister.memberPhone || minister.member?.cellPhone || '-');
       const email = normalizePdfText(minister.email || '-');
       const birthDate = normalizePdfText(minister.memberBirthday ? new Date(minister.memberBirthday).toLocaleDateString('pt-BR') : '-');
 
@@ -399,7 +399,7 @@ export default function MinistersInsurance() {
                         </p>
                       </div>
                       <div className="pr-3">{minister.cpf || '-'}</div>
-                      <div className="pr-3">{minister.member?.cellPhone || '-'}</div>
+                      <div className="pr-3">{minister.memberPhone || minister.member?.cellPhone || '-'}</div>
                       <div className="pr-3 break-words">{minister.email || '-'}</div>
                       <div className="pr-3">{minister.memberBirthday ? new Date(minister.memberBirthday).toLocaleDateString('pt-BR') : '-'}</div>
                     </div>

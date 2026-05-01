@@ -5,6 +5,7 @@ import SmartSelect from '../components/SmartSelect';
 import { useICRApi, Minister, Member } from '../hooks/useICRApi';
 import { settledValue } from '@/lib/utils';
 import { useViaCEP } from '../hooks/useViaCEP';
+import { PRESBITERO_ROLE, getMemberRoleValue } from '../lib/member-roles';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
 import { getMinisterCoverageBadgeClass, getMinisterCoverageLabel, resolveMinisterCoverageStatus, summarizeMinisterCoverage } from '../lib/minister-coverage';
@@ -39,19 +40,6 @@ const formatCEP = (value: string): string => {
   const digits = normalizeCEP(value);
   if (digits.length <= 5) return digits;
   return `${digits.slice(0, 5)}-${digits.slice(5)}`;
-};
-
-const PRESBITERO_ROLE = 2;
-
-const getMemberRoleValue = (value: unknown): number | '' => {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (!trimmed) return '';
-    const numeric = Number(trimmed);
-    return Number.isFinite(numeric) ? numeric : '';
-  }
-  return '';
 };
 
 export default function Ministros() {
@@ -242,7 +230,7 @@ export default function Ministros() {
   const columns: Column<Minister>[] = [
     { key: 'id', label: 'ID' },
     { key: 'memberName', label: 'Nome', render: (item) => item.memberName || '-' },
-    { key: 'phone', label: 'Telefone', render: (item) => item.member?.cellPhone || '-' },
+    { key: 'phone', label: 'Telefone', render: (item) => item.memberPhone || item.member?.cellPhone || '-' },
     { key: 'email', label: 'E-mail', render: (item) => item.email || '-' },
     { key: 'memberBirthday', label: 'Nascimento', render: (item) => item.memberBirthday ? new Date(item.memberBirthday).toLocaleDateString('pt-BR') : '-' },
     { key: 'memberWeddingDate', label: 'Casamento', render: (item) => item.memberWeddingDate ? new Date(item.memberWeddingDate).toLocaleDateString('pt-BR') : '-' },
@@ -319,7 +307,7 @@ export default function Ministros() {
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <InfoTile label="Telefone" value={selectedMinister.member?.cellPhone || '-'} />
+              <InfoTile label="Telefone" value={selectedMinister.memberPhone || selectedMinister.member?.cellPhone || '-'} />
               <InfoTile label="E-mail" value={selectedMinister.email || '-'} />
               <InfoTile label="Nascimento" value={selectedMinister.memberBirthday ? new Date(selectedMinister.memberBirthday).toLocaleDateString('pt-BR') : '-'} />
               <InfoTile label="Casamento" value={selectedMinister.memberWeddingDate ? new Date(selectedMinister.memberWeddingDate).toLocaleDateString('pt-BR') : '-'} />
