@@ -87,8 +87,6 @@ const extractUserFromLoginResponse = (payload: unknown, fallbackUsername: string
   const userId = parseNumberOrUndefined(userData.id) ?? parseNumberOrUndefined(userData.userId) ?? 0;
   const memberId = parseIdFromRecord(userData, ['memberId', 'memberID', 'member_id', 'idMember', 'member']);
   const familyId = parseIdFromRecord(userData, ['familyId', 'familyID', 'family_id', 'family']);
-  const churchId = parseIdFromRecord(userData, ['churchId', 'churchID', 'church_id', 'church']);
-  const federationId = parseIdFromRecord(userData, ['federationId', 'federationID', 'federation_id', 'federation']);
 
   const username =
     (typeof userData.username === 'string' && userData.username.trim())
@@ -114,8 +112,6 @@ const extractUserFromLoginResponse = (payload: unknown, fallbackUsername: string
     id: userId,
     memberId,
     familyId,
-    churchId,
-    federationId,
     username,
     memberName,
     scope,
@@ -128,8 +124,6 @@ const extractUserPatch = (payload: unknown): Partial<ICRUser> => {
     id: parseNumberOrUndefined(row.id) ?? parseNumberOrUndefined(row.userId),
     memberId: parseIdFromRecord(row, ['memberId', 'memberID', 'member_id', 'idMember', 'member']),
     familyId: parseIdFromRecord(row, ['familyId', 'familyID', 'family_id', 'family']),
-    churchId: parseIdFromRecord(row, ['churchId', 'churchID', 'church_id', 'church']),
-    federationId: parseIdFromRecord(row, ['federationId', 'federationID', 'federation_id', 'federation']),
     username: parseStringOrUndefined(row.username),
     memberName:
       parseStringOrUndefined(row.memberName) ??
@@ -162,8 +156,6 @@ const enrichUserFromDirectory = async (userInfo: ICRUser, authToken: string): Pr
       id: patch.id ?? userInfo.id,
       memberId: patch.memberId ?? userInfo.memberId,
       familyId: patch.familyId ?? userInfo.familyId,
-      churchId: patch.churchId ?? userInfo.churchId,
-      federationId: patch.federationId ?? userInfo.federationId,
       username: patch.username ?? userInfo.username,
       memberName: patch.memberName ?? userInfo.memberName,
       scope: patch.scope ?? userInfo.scope,

@@ -47,6 +47,15 @@ export function useICRApi() {
       throw new Error('Sessão expirada. Faça login novamente.');
     }
 
+    if (response.status === 403) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(
+        errData.detail ||
+        errData.message ||
+        'Acesso negado (403). Você não tem permissão para este recurso.',
+      );
+    }
+
     if (response.status === 503) {
       const errData = await response.json().catch(() => ({}));
       throw new Error(errData.detail || 'API ICR indisponível. Verifique a variável ICR_API_URL.');
@@ -150,6 +159,15 @@ export interface Minister {
   cardValidity?: string;
   presbiterOrdinationDate?: string;
   ministerOrdinationDate?: string;
+  member?: Member;
+  insured?: boolean;
+  eligible?: boolean;
+  isInsured?: boolean;
+  isEligible?: boolean;
+  segurado?: boolean;
+  coverageStatus?: string;
+  insuranceStatus?: string;
+  status?: string;
   address?: {
     zipCode?: string;
     street?: string;
@@ -183,6 +201,9 @@ export interface DashboardNational {
   totalFamilies?: number;
   totalCells?: number;
   totalMembers?: number;
+  totalMinisters?: number;
+  totalCoveredMinisters?: number;
+  totalUncoveredMinisters?: number;
   federations?: Array<{
     id: number;
     name: string;

@@ -54,6 +54,7 @@ const navGroups: NavGroup[] = [
     label: 'Ministérios',
     items: [
       { icon: 'person', label: 'Pastores e Presbiteros', path: '/ministers' },
+      { icon: 'health_and_safety', label: 'Seguro de Ministros', path: '/ministers-insurance' },
       { icon: 'cake', label: 'Datas de  Pastores e Presbiteros', path: '/ministers-dates' },
     ],
   },

@@ -4,8 +4,9 @@ import CRUDTable, { Column } from '../components/CRUDTable';
 import SmartSelect from '../components/SmartSelect';
 import MultiSmartSelect from '../components/MultiSmartSelect';
 import { useICRAuth } from '../contexts/ICRAuthContext';
-import { getScopeLevel, resolveScopeRestrictions } from '../lib/scope-access';
+import { buildLocalChurchFallback, getScopeLevel, resolveScopeRestrictions } from '../lib/scope-access';
 import { useICRApi, Family, Church, Cell, Federation, Member, Minister } from '../hooks/useICRApi';
+import { settledValue } from '@/lib/utils';
 import { toast } from 'sonner';
 
 interface FamiliaForm {
@@ -17,6 +18,37 @@ interface FamiliaForm {
   weddingDate: string;
 }
 
+interface FamilyMemberDraft {
+  enabled: boolean;
+  name: string;
+  birthDate: string;
+  cellPhone: string;
+  role: number | '';
+}
+
+const MEMBER_ROLE_OPTIONS = [
+  { value: 1, label: 'Pastor' },
+  { value: 2, label: 'Presbitero' },
+  { value: 3, label: 'Diacono' },
+  { value: 4, label: 'Obreiro' },
+  { value: 5, label: 'Midias' },
+  { value: 6, label: 'Louvor' },
+  { value: 7, label: 'Som / Projecao' },
+  { value: 8, label: 'Secretaria / Integracao' },
+  { value: 9, label: 'Ensino' },
+  { value: 10, label: 'Evangelizacao / Social' },
+  { value: 11, label: 'Familias' },
+  { value: 12, label: 'Outros' },
+];
+
+const createEmptyFamilyMemberDraft = (enabled = true): FamilyMemberDraft => ({
+  enabled,
+  name: '',
+  birthDate: '',
+  cellPhone: '',
+  role: '',
+});
+
 export default function Familias() {
   const { fetchApi } = useICRApi();
   const { user } = useICRAuth();
@@ -26,7 +58,13 @@ export default function Familias() {
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState<Family | null>(null);
+  const [showMembersModal, setShowMembersModal] = useState(false);
+  const [selectedFamily, setSelectedFamily] = useState<Family | null>(null);
   const [form, setForm] = useState<FamiliaForm>({ name: '', churchId: '', cellId: '', manId: '', womanId: '', weddingDate: '' });
+  const [createManMember, setCreateManMember] = useState(true);
+  const [createWomanMember, setCreateWomanMember] = useState(true);
+  const [manDraft, setManDraft] = useState<FamilyMemberDraft>(createEmptyFamilyMemberDraft(true));
+  const [womanDraft, setWomanDraft] = useState<FamilyMemberDraft>(createEmptyFamilyMemberDraft(true));
   const [saving, setSaving] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
@@ -49,18 +87,33 @@ export default function Familias() {
   useEffect(() => {
     const loadLookups = async () => {
       try {
-        const [churchesRes, cellsRes, federationsRes, ministersRes, membersRes] = await Promise.all([
-          fetchApi<Church[]>('/api/churches'),
+        const churchesRequest = isLocalScope && typeof user?.churchId === 'number'
+          ? fetchApi<Church>(`/api/churches/${user.churchId}`)
+              .then((church) => [church])
+              .catch(() => buildLocalChurchFallback(user.churchId))
+          : fetchApi<Church[]>('/api/churches');
+
+        const federationsRequest = isLocalScope
+          ? Promise.resolve<Federation[]>([])
+          : fetchApi<Federation[]>('/api/federations');
+
+        const ministersRequest = isLocalScope
+          ? Promise.resolve<Minister[]>([])
+          : fetchApi<Minister[]>('/api/ministers?page=1&pageSize=200');
+
+        const [churchesRes, cellsRes, federationsRes, ministersRes, membersRes] = await Promise.allSettled([
+          churchesRequest,
           fetchApi<Cell[]>('/api/cells'),
-          fetchApi<Federation[]>('/api/federations'),
-          fetchApi<Minister[]>('/api/ministers?page=1&pageSize=200'),
+          federationsRequest,
+          ministersRequest,
           fetchApi<Member[]>('/api/members'),
         ]);
-        setChurches(churchesRes);
-        setCells(cellsRes);
-        setFederations(federationsRes);
-        setMinisters(Array.isArray(ministersRes) ? ministersRes : []);
-        setMembers(membersRes);
+
+        setChurches(settledValue(churchesRes) ?? []);
+        setCells(settledValue(cellsRes) ?? []);
+        setFederations(settledValue(federationsRes) ?? []);
+        setMinisters(settledValue(ministersRes) ?? []);
+        setMembers(settledValue(membersRes) ?? []);
       } catch (err) {
         console.error('Erro ao carregar dados auxiliares:', err);
       }
@@ -120,6 +173,10 @@ export default function Familias() {
       womanId: '',
       weddingDate: '',
     });
+    setCreateManMember(true);
+    setCreateWomanMember(true);
+    setManDraft(createEmptyFamilyMemberDraft(true));
+    setWomanDraft(createEmptyFamilyMemberDraft(true));
     setShowModal(true);
   };
 
@@ -182,6 +239,11 @@ export default function Familias() {
     return members.filter((member) => member.familyId && allowedFamilyIds.has(member.familyId));
   }, [members, scopedFamilies]);
 
+  const selectedFamilyMembers = useMemo(() => {
+    if (!selectedFamily) return [];
+    return scopedMembers.filter((member) => member.familyId === selectedFamily.id);
+  }, [scopedMembers, selectedFamily]);
+
   useEffect(() => {
     if (isFederatedScope && typeof restrictions.lockedFederationId === 'number') {
       setSelectedFederationIds([restrictions.lockedFederationId]);
@@ -206,7 +268,37 @@ export default function Familias() {
       womanId: item.womanId || '',
       weddingDate: item.weddingDate ? item.weddingDate.split('T')[0] : '',
     });
+    setCreateManMember(false);
+    setCreateWomanMember(false);
+    setManDraft(createEmptyFamilyMemberDraft(false));
+    setWomanDraft(createEmptyFamilyMemberDraft(false));
     setShowModal(true);
+  };
+
+  const createMemberForFamily = async (familyId: number, gender: number, draft: FamilyMemberDraft) => {
+    const createdMember = await fetchApi<Member>('/api/members', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: draft.name,
+        familyId,
+        gender,
+        hasBeenMarried: true,
+        birthDate: draft.birthDate || undefined,
+        cellPhone: draft.cellPhone || undefined,
+        role: draft.role !== '' ? Number(draft.role) : undefined,
+      }),
+    });
+
+    if (!createdMember?.id) {
+      throw new Error('Falha ao criar membro da família');
+    }
+
+    return createdMember.id;
+  };
+
+  const openMembers = (item: Family) => {
+    setSelectedFamily(item);
+    setShowMembersModal(true);
   };
 
   const handleSave = async () => {
@@ -216,6 +308,18 @@ export default function Familias() {
     if (!scopedChurches.some((church) => church.id === form.churchId)) {
       toast.error('Você não tem permissão para usar esta igreja.');
       return;
+    }
+
+    if (!editItem) {
+      if (createManMember && !manDraft.name.trim()) {
+        toast.error('Informe o nome do marido para criar o membro');
+        return;
+      }
+
+      if (createWomanMember && !womanDraft.name.trim()) {
+        toast.error('Informe o nome da mulher para criar o membro');
+        return;
+      }
     }
 
     setSaving(true);
@@ -233,8 +337,27 @@ export default function Familias() {
         await fetchApi(`/api/families/${editItem.id}`, { method: 'PATCH', body: JSON.stringify(body) });
         toast.success('Família atualizada com sucesso');
       } else {
-        await fetchApi('/api/families', { method: 'POST', body: JSON.stringify(body) });
-        toast.success('Família criada com sucesso');
+        const createdFamily = await fetchApi<Family>('/api/families', { method: 'POST', body: JSON.stringify(body) });
+        const familyId = createdFamily?.id;
+
+        if (!familyId) {
+          throw new Error('Falha ao obter ID da família criada');
+        }
+
+        const createdManId = createManMember ? await createMemberForFamily(familyId, 1, manDraft) : undefined;
+        const createdWomanId = createWomanMember ? await createMemberForFamily(familyId, 2, womanDraft) : undefined;
+
+        if (createdManId || createdWomanId) {
+          await fetchApi(`/api/families/${familyId}`, {
+            method: 'PATCH',
+            body: JSON.stringify({
+              manId: createdManId,
+              womanId: createdWomanId,
+            }),
+          });
+        }
+
+        toast.success('Família e membros criados com sucesso');
       }
       setShowModal(false);
       load();
@@ -360,6 +483,9 @@ export default function Familias() {
         columns={columns}
         isLoading={isLoading}
         error={error}
+        onView={openMembers}
+        viewLabel="Ver membros"
+        viewIcon="groups"
         onAdd={openAdd}
         onEdit={openEdit}
         onDelete={handleDelete}
@@ -371,7 +497,7 @@ export default function Familias() {
 
       {showModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#2b2b2b] rounded-xl p-6 max-w-md w-full shadow-2xl">
+          <div className="bg-[#2b2b2b] rounded-xl p-6 max-w-4xl w-full shadow-2xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-5">
               <h3 className="text-white font-['Nunito'] font-semibold text-lg">
                 {editItem ? 'Editar Família' : 'Nova Família'}
@@ -409,26 +535,171 @@ export default function Familias() {
                   placeholder={form.churchId ? 'Selecione uma célula' : 'Escolha uma igreja primeiro'}
                   disabled={!form.churchId}
                 />
-                <SmartSelect
-                  label="Marido"
-                  selectedId={form.manId}
-                  onSelect={id => setF('manId', id)}
-                  items={scopedMembers.map(m => ({ id: m.id, name: m.name }))}
-                  placeholder="Selecione um membro"
-                />
-                <SmartSelect
-                  label="Esposa"
-                  selectedId={form.womanId}
-                  onSelect={id => setF('womanId', id)}
-                  items={scopedMembers.map(m => ({ id: m.id, name: m.name }))}
-                  placeholder="Selecione um membro"
-                />
               </div>
               <div>
                 <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Data de Casamento</label>
                 <input type="date" max={todayDate} value={form.weddingDate} onChange={e => setF('weddingDate', e.target.value)}
                   className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]" />
               </div>
+
+              {!editItem && (
+                <div className="space-y-4 pt-2">
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-white font-['Nunito'] font-semibold text-sm">Criar marido</p>
+                        <p className="text-white/45 font-['Nunito'] text-xs mt-1">O membro será criado e marcado como marido da família.</p>
+                      </div>
+                      <label className="inline-flex items-center gap-2 text-white/70 text-sm font-['Nunito'] cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={createManMember}
+                          onChange={(event) => setCreateManMember(event.target.checked)}
+                          className="h-4 w-4 rounded border-white/30 bg-[#1c1c1c] text-[#017158] focus:ring-[#017158]"
+                        />
+                        Ativar
+                      </label>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 opacity-100">
+                      <div className="md:col-span-2">
+                        <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Nome do marido *</label>
+                        <input
+                          type="text"
+                          value={manDraft.name}
+                          onChange={(event) => setManDraft((prev) => ({ ...prev, name: event.target.value }))}
+                          disabled={!createManMember}
+                          className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                          placeholder="Nome do marido"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Função / Cargo</label>
+                        <select
+                          value={manDraft.role}
+                          onChange={(event) => setManDraft((prev) => ({ ...prev, role: event.target.value ? Number(event.target.value) : '' }))}
+                          disabled={!createManMember}
+                          className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                        >
+                          <option value="">Sem função</option>
+                          {MEMBER_ROLE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Nascimento</label>
+                        <input
+                          type="date"
+                          value={manDraft.birthDate}
+                          onChange={(event) => setManDraft((prev) => ({ ...prev, birthDate: event.target.value }))}
+                          disabled={!createManMember}
+                          className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                        />
+                      </div>
+                      <div className="md:col-span-3">
+                        <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Telefone</label>
+                        <input
+                          type="text"
+                          value={manDraft.cellPhone}
+                          onChange={(event) => setManDraft((prev) => ({ ...prev, cellPhone: event.target.value }))}
+                          disabled={!createManMember}
+                          className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                          placeholder="Opcional"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-4 space-y-4">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-white font-['Nunito'] font-semibold text-sm">Criar mulher</p>
+                        <p className="text-white/45 font-['Nunito'] text-xs mt-1">O membro será criado e marcado como mulher da família.</p>
+                      </div>
+                      <label className="inline-flex items-center gap-2 text-white/70 text-sm font-['Nunito'] cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={createWomanMember}
+                          onChange={(event) => setCreateWomanMember(event.target.checked)}
+                          className="h-4 w-4 rounded border-white/30 bg-[#1c1c1c] text-[#017158] focus:ring-[#017158]"
+                        />
+                        Ativar
+                      </label>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div className="md:col-span-2">
+                        <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Nome da mulher *</label>
+                        <input
+                          type="text"
+                          value={womanDraft.name}
+                          onChange={(event) => setWomanDraft((prev) => ({ ...prev, name: event.target.value }))}
+                          disabled={!createWomanMember}
+                          className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                          placeholder="Nome da mulher"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Função / Cargo</label>
+                        <select
+                          value={womanDraft.role}
+                          onChange={(event) => setWomanDraft((prev) => ({ ...prev, role: event.target.value ? Number(event.target.value) : '' }))}
+                          disabled={!createWomanMember}
+                          className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                        >
+                          <option value="">Sem função</option>
+                          {MEMBER_ROLE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Nascimento</label>
+                        <input
+                          type="date"
+                          value={womanDraft.birthDate}
+                          onChange={(event) => setWomanDraft((prev) => ({ ...prev, birthDate: event.target.value }))}
+                          disabled={!createWomanMember}
+                          className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                        />
+                      </div>
+                      <div className="md:col-span-3">
+                        <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Telefone</label>
+                        <input
+                          type="text"
+                          value={womanDraft.cellPhone}
+                          onChange={(event) => setWomanDraft((prev) => ({ ...prev, cellPhone: event.target.value }))}
+                          disabled={!createWomanMember}
+                          className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                          placeholder="Opcional"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {editItem && (
+                <div className="grid grid-cols-2 gap-3">
+                  <SmartSelect
+                    label="Marido"
+                    selectedId={form.manId}
+                    onSelect={id => setF('manId', id)}
+                    items={scopedMembers.map(m => ({ id: m.id, name: m.name }))}
+                    placeholder="Selecione um membro"
+                  />
+                  <SmartSelect
+                    label="Esposa"
+                    selectedId={form.womanId}
+                    onSelect={id => setF('womanId', id)}
+                    items={scopedMembers.map(m => ({ id: m.id, name: m.name }))}
+                    placeholder="Selecione um membro"
+                  />
+                </div>
+              )}
             </div>
 
             <div className="flex gap-3 justify-end mt-6">
@@ -439,6 +710,76 @@ export default function Familias() {
               <button onClick={handleSave} disabled={saving}
                 className="px-4 py-2 rounded-lg bg-[#017158] hover:bg-[#01a07e] text-white transition-colors font-['Nunito'] text-sm font-medium disabled:opacity-50">
                 {saving ? 'Salvando...' : 'Salvar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showMembersModal && selectedFamily && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
+          <div className="bg-[#2b2b2b] rounded-xl p-6 max-w-2xl w-full shadow-2xl">
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h3 className="text-white font-['Nunito'] font-semibold text-lg">
+                  Membros da família
+                </h3>
+                <p className="text-white/50 font-['Nunito'] text-sm mt-1">{selectedFamily.name}</p>
+              </div>
+              <button onClick={() => setShowMembersModal(false)} className="text-white/40 hover:text-white transition-colors">
+                <span className="material-icons">close</span>
+              </button>
+            </div>
+
+            {selectedFamilyMembers.length === 0 ? (
+              <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-6 text-center text-white/50 font-['Nunito'] text-sm">
+                Nenhum membro vinculado a esta família.
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+                {selectedFamilyMembers.map((member) => (
+                  <div
+                    key={member.id}
+                    className={`rounded-lg px-4 py-3 flex items-center justify-between gap-3 border ${
+                      member.id === selectedFamily.manId
+                        ? 'border-[#017158] bg-[#017158]/10'
+                        : member.id === selectedFamily.womanId
+                          ? 'border-[#8a5cff] bg-[#8a5cff]/10'
+                          : 'border-white/10 bg-white/5'
+                    }`}
+                  >
+                    <div>
+                      <p className="text-white font-['Nunito'] text-sm font-medium">{member.name}</p>
+                      <p className="text-white/45 font-['Nunito'] text-xs mt-1">
+                        {member.roleName || member.className || 'Membro'}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap justify-end">
+                      {member.id === selectedFamily.manId && (
+                        <span className="rounded-full border border-[#017158]/30 bg-[#017158]/10 px-3 py-1 text-xs text-[#8de2c7] font-['Nunito']">
+                          Marido
+                        </span>
+                      )}
+                      {member.id === selectedFamily.womanId && (
+                        <span className="rounded-full border border-[#8a5cff]/30 bg-[#8a5cff]/10 px-3 py-1 text-xs text-[#d9caff] font-['Nunito']">
+                          Mulher
+                        </span>
+                      )}
+                      <span className="rounded-full border border-white/10 bg-black/10 px-3 py-1 text-xs text-white/60 font-['Nunito']">
+                        ID {member.id}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="flex justify-end mt-6">
+              <button
+                onClick={() => setShowMembersModal(false)}
+                className="px-4 py-2 rounded-lg border border-white/20 text-white/60 hover:text-white hover:border-white/40 transition-colors font-['Nunito'] text-sm"
+              >
+                Fechar
               </button>
             </div>
           </div>

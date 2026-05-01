@@ -3,6 +3,7 @@ import ICRLayout from '../components/ICRLayout';
 import CRUDTable, { Column } from '../components/CRUDTable';
 import SmartSelect from '../components/SmartSelect';
 import { useICRApi, Federation, Member } from '../hooks/useICRApi';
+import { settledValue } from '@/lib/utils';
 import { toast } from 'sonner';
 
 interface FederacaoForm {
@@ -25,12 +26,17 @@ export default function Federacoes() {
     setIsLoading(true);
     setError(null);
     try {
-      const [federationsResult, membersResult] = await Promise.all([
+      const [federationsResult, membersResult] = await Promise.allSettled([
         fetchApi<Federation[]>('/api/federations'),
         fetchApi<Member[]>('/api/members'),
       ]);
-      setData(federationsResult);
-      setMembers(membersResult);
+
+      if (federationsResult.status === 'rejected') {
+        throw federationsResult.reason;
+      }
+
+      setData(settledValue(federationsResult) ?? []);
+      setMembers(settledValue(membersResult) ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar Areas');
     } finally {

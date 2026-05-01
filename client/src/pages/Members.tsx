@@ -4,8 +4,9 @@ import CRUDTable, { Column } from '../components/CRUDTable';
 import SmartSelect from '../components/SmartSelect';
 import MultiSmartSelect from '../components/MultiSmartSelect';
 import { useICRAuth } from '../contexts/ICRAuthContext';
-import { getScopeLevel, resolveScopeRestrictions } from '../lib/scope-access';
+import { buildLocalChurchFallback, getScopeLevel, resolveScopeRestrictions } from '../lib/scope-access';
 import { useICRApi, Member, Family, Church, Cell, Federation, Minister } from '../hooks/useICRApi';
+import { settledValue } from '@/lib/utils';
 import { useViaCEP } from '../hooks/useViaCEP';
 import { toast } from 'sonner';
 
@@ -211,43 +212,33 @@ export default function Membros() {
     setIsLoading(true);
     setError(null);
     try {
-      const [membersResult, familiesResult, churchesResult, cellsResult, federationsResult, ministersResult] = await Promise.all(
-        serverPaginationEnabled
-          ? [
-              fetchApi<Member[]>(`/api/members?page=${page}&pageSize=${pageSize}`),
-              fetchApi<Family[]>('/api/families?page=1&pageSize=100'),
-              fetchApi<Church[]>('/api/churches'),
-              fetchApi<Cell[]>('/api/cells'),
-              fetchApi<Federation[]>('/api/federations'),
-              fetchApi<Minister[]>('/api/ministers?page=1&pageSize=200'),
-            ]
-          : [
-              fetchApi<Member[]>('/api/members'),
-              fetchApi<Family[]>('/api/families?page=1&pageSize=100'),
-              fetchApi<Church[]>('/api/churches'),
-              fetchApi<Cell[]>('/api/cells'),
-              fetchApi<Federation[]>('/api/federations'),
-              fetchApi<Minister[]>('/api/ministers?page=1&pageSize=200'),
-            ],
-      );
-      const membersData = Array.isArray(membersResult) ? membersResult : [];
+      const requestList = serverPaginationEnabled
+        ? [
+            fetchApi<Member[]>(`/api/members?page=${page}&pageSize=${pageSize}`),
+            fetchApi<Family[]>('/api/families?page=1&pageSize=100'),
+            isLocalScope && typeof user?.churchId === 'number'
+              ? fetchApi<Church>(`/api/churches/${user.churchId}`).then((church) => [church]).catch(() => buildLocalChurchFallback(user.churchId))
+              : fetchApi<Church[]>('/api/churches'),
+            fetchApi<Cell[]>('/api/cells'),
+            isLocalScope ? Promise.resolve<Federation[]>([]) : fetchApi<Federation[]>('/api/federations'),
+            isLocalScope ? Promise.resolve<Minister[]>([]) : fetchApi<Minister[]>('/api/ministers?page=1&pageSize=200'),
+          ]
+        : [
+            fetchApi<Member[]>('/api/members'),
+            fetchApi<Family[]>('/api/families?page=1&pageSize=100'),
+            isLocalScope && typeof user?.churchId === 'number'
+              ? fetchApi<Church>(`/api/churches/${user.churchId}`).then((church) => [church]).catch(() => buildLocalChurchFallback(user.churchId))
+              : fetchApi<Church[]>('/api/churches'),
+            fetchApi<Cell[]>('/api/cells'),
+            isLocalScope ? Promise.resolve<Federation[]>([]) : fetchApi<Federation[]>('/api/federations'),
+            isLocalScope ? Promise.resolve<Minister[]>([]) : fetchApi<Minister[]>('/api/ministers?page=1&pageSize=200'),
+          ];
 
-      if (serverPaginationEnabled && page > 1 && membersData.length === 0) {
-        setPage((prev) => Math.max(1, prev - 1));
-        return;
-      }
+      const [membersResult, familiesResult, churchesResult, cellsResult, federationsResult, ministersResult] = await Promise.allSettled(requestList);
 
-      setData(membersData);
-      setHasNextPage(serverPaginationEnabled && membersData.length === pageSize);
-      setFamilies(Array.isArray(familiesResult) ? familiesResult : []);
-      setChurches(Array.isArray(churchesResult) ? churchesResult : []);
-      setCells(Array.isArray(cellsResult) ? cellsResult : []);
-      setFederations(Array.isArray(federationsResult) ? federationsResult : []);
-      setMinisters(Array.isArray(ministersResult) ? ministersResult : []);
-    } catch (err) {
-      if (serverPaginationEnabled && isForbiddenError(err)) {
-        try {
-          const [membersResult, familiesResult, churchesResult, cellsResult, federationsResult, ministersResult] = await Promise.all([
+      if (membersResult.status === 'rejected') {
+        if (serverPaginationEnabled && isForbiddenError(membersResult.reason)) {
+          const fallbackResults = await Promise.allSettled([
             fetchApi<Member[]>('/api/members'),
             fetchApi<Family[]>('/api/families?page=1&pageSize=100'),
             fetchApi<Church[]>('/api/churches'),
@@ -256,22 +247,44 @@ export default function Membros() {
             fetchApi<Minister[]>('/api/ministers?page=1&pageSize=200'),
           ]);
 
-          setData(Array.isArray(membersResult) ? membersResult : []);
+          const [fallbackMembersResult, fallbackFamiliesResult, fallbackChurchesResult, fallbackCellsResult, fallbackFederationsResult, fallbackMinistersResult] = fallbackResults;
+          const fallbackMembersData = settledValue(fallbackMembersResult) ?? [];
+
+          if (page > 1 && fallbackMembersData.length === 0) {
+            setPage((prev) => Math.max(1, prev - 1));
+            return;
+          }
+
+          setData(fallbackMembersData);
           setHasNextPage(false);
-          setFamilies(Array.isArray(familiesResult) ? familiesResult : []);
-          setChurches(Array.isArray(churchesResult) ? churchesResult : []);
-          setCells(Array.isArray(cellsResult) ? cellsResult : []);
-          setFederations(Array.isArray(federationsResult) ? federationsResult : []);
-          setMinisters(Array.isArray(ministersResult) ? ministersResult : []);
+          setFamilies(settledValue(fallbackFamiliesResult) ?? []);
+          setChurches(settledValue(fallbackChurchesResult) ?? []);
+          setCells(settledValue(fallbackCellsResult) ?? []);
+          setFederations(settledValue(fallbackFederationsResult) ?? []);
+          setMinisters(settledValue(fallbackMinistersResult) ?? []);
           setServerPaginationEnabled(false);
           setPage(1);
           return;
-        } catch (fallbackErr) {
-          setError(fallbackErr instanceof Error ? fallbackErr.message : 'Erro ao carregar membros');
-          return;
         }
+
+        throw membersResult.reason;
       }
 
+      const membersData = Array.isArray(membersResult.value) ? membersResult.value : [];
+
+      if (serverPaginationEnabled && page > 1 && membersData.length === 0) {
+        setPage((prev) => Math.max(1, prev - 1));
+        return;
+      }
+
+      setData(membersData);
+      setHasNextPage(serverPaginationEnabled && membersData.length === pageSize);
+      setFamilies(settledValue(familiesResult) ?? []);
+      setChurches(settledValue(churchesResult) ?? []);
+      setCells(settledValue(cellsResult) ?? []);
+      setFederations(settledValue(federationsResult) ?? []);
+      setMinisters(settledValue(ministersResult) ?? []);
+    } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar membros');
     } finally {
       setIsLoading(false);
@@ -567,7 +580,7 @@ export default function Membros() {
                   className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                   placeholder="Nome completo" />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-3">
                 <div>
                   <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Gênero</label>
                   <select value={form.gender} onChange={e => setF('gender', Number(e.target.value))}
@@ -576,10 +589,25 @@ export default function Membros() {
                     <option value={2}>Feminino</option>
                   </select>
                 </div>
-                <div>
-                  <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Data de Nascimento</label>
-                  <input type="date" max={todayDate} value={form.birthDate} onChange={e => setF('birthDate', e.target.value)}
-                    className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]" />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Data de Nascimento</label>
+                    <input type="date" max={todayDate} value={form.birthDate} onChange={e => setF('birthDate', e.target.value)}
+                      className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]" />
+                  </div>
+                  <div>
+                    <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Telefone</label>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
+                      maxLength={15}
+                      value={formatPhone(form.cellPhone)}
+                      onChange={e => setF('cellPhone', normalizePhone(e.target.value))}
+                      className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
+                      placeholder="(21) 90000-0000"
+                    />
+                  </div>
                 </div>
                 <SmartSelect
                   label="Família"
@@ -588,19 +616,6 @@ export default function Membros() {
                   items={scopedFamilies.map((f) => ({ id: f.id, name: f.name }))}
                   placeholder="Selecione uma família"
                 />
-                <div>
-                  <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Telefone</label>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    maxLength={15}
-                    value={formatPhone(form.cellPhone)}
-                    onChange={e => setF('cellPhone', normalizePhone(e.target.value))}
-                    className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                    placeholder="(21) 90000-0000"
-                  />
-                </div>
               </div>
               <div>
                 <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Função/Cargo</label>

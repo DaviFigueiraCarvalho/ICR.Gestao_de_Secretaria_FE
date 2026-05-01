@@ -6,6 +6,7 @@ import MultiSmartSelect from '../components/MultiSmartSelect';
 import { useICRAuth } from '../contexts/ICRAuthContext';
 import { getScopeLevel } from '../lib/scope-access';
 import { useICRApi, Cell, Church, Federation, Minister } from '../hooks/useICRApi';
+import { settledValue } from '@/lib/utils';
 import { useViaCEP } from '../hooks/useViaCEP';
 import { toast } from 'sonner';
 
@@ -46,16 +47,21 @@ export default function Igrejas() {
     setIsLoading(true);
     setError(null);
     try {
-      const [churchesResult, federationsResult, ministersResult, cellsResult] = await Promise.all([
+      const [churchesResult, federationsResult, ministersResult, cellsResult] = await Promise.allSettled([
         fetchApi<Church[]>('/api/churches'),
         fetchApi<Federation[]>('/api/federations'),
         fetchApi<Minister[]>('/api/ministers'),
         fetchApi<Cell[]>('/api/cells'),
       ]);
-      setData(Array.isArray(churchesResult) ? churchesResult : []);
-      setFederations(federationsResult);
-      setMinisters(ministersResult);
-      setCells(cellsResult);
+
+      if (churchesResult.status === 'rejected') {
+        throw churchesResult.reason;
+      }
+
+      setData(Array.isArray(churchesResult.value) ? churchesResult.value : []);
+      setFederations(settledValue(federationsResult) ?? []);
+      setMinisters(settledValue(ministersResult) ?? []);
+      setCells(settledValue(cellsResult) ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar igrejas');
     } finally {

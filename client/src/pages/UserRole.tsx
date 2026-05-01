@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import ICRLayout from '../components/ICRLayout';
 import CRUDTable, { Column } from '../components/CRUDTable';
 import { Member, useICRApi } from '../hooks/useICRApi';
+import { settledValue } from '@/lib/utils';
 import { toast } from 'sonner';
 
 interface Usuario {
@@ -182,12 +183,13 @@ export default function Usuarios() {
 
   const loadLookups = async () => {
     try {
-      const [membersResult, rolesResult] = await Promise.all([
+      const [membersResult, rolesResult] = await Promise.allSettled([
         fetchApi<Member[]>('/api/members?page=1&pageSize=200'),
         fetchApi<unknown>('/api/user-roles/roles'),
       ]);
-      setMembers(Array.isArray(membersResult) ? membersResult : []);
-      setRoles(normalizeRoles(rolesResult));
+
+      setMembers(settledValue(membersResult) ?? []);
+      setRoles(normalizeRoles(settledValue(rolesResult)));
     } catch {
       // User list can still be used even if lookups fail.
     }

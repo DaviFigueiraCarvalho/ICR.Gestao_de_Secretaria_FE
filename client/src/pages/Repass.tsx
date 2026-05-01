@@ -4,6 +4,7 @@ import { useICRApi, Repass, Reference, Church } from '../hooks/useICRApi';
 import { useTheme } from '../contexts/ThemeContext';
 import { toast } from 'sonner';
 import { isPermissionError } from '@/lib/utils';
+import { settledValue } from '@/lib/utils';
 import PermissionDeniedError from '../components/PermissionDeniedError';
 
 interface RepassRow {
@@ -40,14 +41,18 @@ export default function Repasses() {
     setIsLoading(true);
     setError(null);
     try {
-      const [refs, churchList] = await Promise.all([
+      const [refs, churchList] = await Promise.allSettled([
         fetchApi<Reference[]>('/api/repasses/references'),
         fetchApi<Church[]>('/api/churches'),
       ]);
-      setReferences(refs);
-      setChurches(churchList);
-      if (refs.length > 0 && !selectedRef) {
-        setSelectedRef(refs[refs.length - 1].id);
+
+      const resolvedRefs = settledValue(refs) ?? [];
+      const resolvedChurches = settledValue(churchList) ?? [];
+
+      setReferences(resolvedRefs);
+      setChurches(resolvedChurches);
+      if (resolvedRefs.length > 0 && !selectedRef) {
+        setSelectedRef(resolvedRefs[resolvedRefs.length - 1].id);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar dados');

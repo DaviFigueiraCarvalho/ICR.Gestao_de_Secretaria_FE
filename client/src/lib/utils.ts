@@ -8,7 +8,24 @@ export function cn(...inputs: ClassValue[]) {
 
 export const isPermissionError = (error: unknown): boolean => {
   if (error instanceof Error) {
-    return error.message.includes(NOT_ADMIN_ERR_MSG) || error.message.includes("10002");
+    const message = error.message.toLowerCase();
+    const status = (error as Error & { status?: number }).status;
+
+    return (
+      status === 403 ||
+      message.includes(NOT_ADMIN_ERR_MSG.toLowerCase()) ||
+      message.includes('10002') ||
+      message.includes('403') ||
+      message.includes('forbidden') ||
+      message.includes('acesso negado') ||
+      message.includes('sem permissão') ||
+      message.includes('sem permissao')
+    );
   }
   return false;
+};
+
+export const settledValue = <T>(result: PromiseSettledResult<T>): T | undefined => {
+  if (result.status === 'fulfilled') return result.value;
+  return undefined;
 };

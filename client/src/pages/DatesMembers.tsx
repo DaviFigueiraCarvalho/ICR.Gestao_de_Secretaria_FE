@@ -3,7 +3,7 @@ import ICRLayout from '../components/ICRLayout';
 import { useICRApi, Church } from '../hooks/useICRApi';
 import { useICRAuth } from '../contexts/ICRAuthContext';
 import { useTheme } from '../contexts/ThemeContext';
-import { getScopeLevel } from '../lib/scope-access';
+import { buildLocalChurchFallback, getScopeLevel } from '../lib/scope-access';
 import { isPermissionError } from '@/lib/utils';
 import PermissionDeniedError from '../components/PermissionDeniedError';
 
@@ -142,19 +142,25 @@ export default function DatasMembers() {
   useEffect(() => {
     const loadChurches = async () => {
       try {
-        const result = await fetchApi<Church[]>('/api/churches');
-        const churchesList = Array.isArray(result) ? result : [];
         if (isLocalScope) {
           if (typeof user?.churchId === 'number') {
-            const ownChurch = churchesList.find((church) => church.id === user.churchId);
-            setChurches(ownChurch ? [ownChurch] : []);
-            setSelectedChurch(ownChurch?.id ?? '');
+            try {
+              const ownChurch = await fetchApi<Church>(`/api/churches/${user.churchId}`);
+              setChurches(ownChurch?.id ? [ownChurch] : buildLocalChurchFallback(user.churchId));
+              setSelectedChurch(ownChurch?.id ?? user.churchId);
+            } catch {
+              setChurches(buildLocalChurchFallback(user.churchId));
+              setSelectedChurch(user.churchId);
+            }
           } else {
             setChurches([]);
             setSelectedChurch('');
           }
           return;
         }
+
+        const result = await fetchApi<Church[]>('/api/churches');
+        const churchesList = Array.isArray(result) ? result : [];
 
         if (isFederatedScope && typeof user?.federationId === 'number') {
           const federationChurches = churchesList.filter((church) => church.federationId === user.federationId);

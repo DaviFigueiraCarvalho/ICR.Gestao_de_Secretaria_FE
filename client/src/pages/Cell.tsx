@@ -4,8 +4,9 @@ import CRUDTable, { Column } from '../components/CRUDTable';
 import SmartSelect from '../components/SmartSelect';
 import MultiSmartSelect from '../components/MultiSmartSelect';
 import { useICRAuth } from '../contexts/ICRAuthContext';
-import { getScopeLevel, resolveScopeRestrictions } from '../lib/scope-access';
+import { buildLocalChurchFallback, getScopeLevel, resolveScopeRestrictions } from '../lib/scope-access';
 import { useICRApi, Cell, Church, Family, Federation, Member, Minister } from '../hooks/useICRApi';
+import { settledValue } from '@/lib/utils';
 import { toast } from 'sonner';
 
 interface CelulaForm {
@@ -88,20 +89,39 @@ export default function Celulas() {
     setIsLoading(true);
     setError(null);
     try {
-      const [cellsResult, churchesResult, familiesResult, federationsResult, ministersResult, membersResult] = await Promise.all([
+      const churchesRequest = isLocalScope && typeof user?.churchId === 'number'
+        ? fetchApi<Church>(`/api/churches/${user.churchId}`)
+            .then((church) => [church])
+            .catch(() => buildLocalChurchFallback(user.churchId))
+        : fetchApi<Church[]>('/api/churches');
+
+      const federationsRequest = isLocalScope
+        ? Promise.resolve<Federation[]>([])
+        : fetchApi<Federation[]>('/api/federations');
+
+      const ministersRequest = isLocalScope
+        ? Promise.resolve<Minister[]>([])
+        : fetchApi<Minister[]>('/api/ministers?page=1&pageSize=200');
+
+      const [cellsResult, churchesResult, familiesResult, federationsResult, ministersResult, membersResult] = await Promise.allSettled([
         fetchApi<Cell[]>('/api/cells'),
-        fetchApi<Church[]>('/api/churches'),
+        churchesRequest,
         fetchApi<Family[]>('/api/families?page=1&pageSize=200'),
-        fetchApi<Federation[]>('/api/federations'),
-        fetchApi<Minister[]>('/api/ministers?page=1&pageSize=200'),
+        federationsRequest,
+        ministersRequest,
         fetchApi<Member[]>('/api/members'),
       ]);
-      setData(Array.isArray(cellsResult) ? cellsResult : []);
-      setChurches(churchesResult);
-      setFamilies(Array.isArray(familiesResult) ? familiesResult : []);
-      setFederations(federationsResult);
-      setMinisters(Array.isArray(ministersResult) ? ministersResult : []);
-      setMembers(membersResult);
+
+      if (cellsResult.status === 'rejected') {
+        throw cellsResult.reason;
+      }
+
+      setData(Array.isArray(cellsResult.value) ? cellsResult.value : []);
+      setChurches(settledValue(churchesResult) ?? []);
+      setFamilies(Array.isArray(settledValue(familiesResult)) ? settledValue(familiesResult) ?? [] : []);
+      setFederations(settledValue(federationsResult) ?? []);
+      setMinisters(Array.isArray(settledValue(ministersResult)) ? settledValue(ministersResult) ?? [] : []);
+      setMembers(settledValue(membersResult) ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar células');
     } finally {

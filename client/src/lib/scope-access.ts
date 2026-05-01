@@ -2,6 +2,12 @@ export type ScopeLevel = 'local' | 'federated' | 'federation';
 
 import type { Church, Family, Federation, Member, Minister } from '../hooks/useICRApi';
 
+export const buildLocalChurchFallback = (churchId?: number): Church[] => {
+  if (typeof churchId !== 'number') return [];
+
+  return [{ id: churchId, name: `Igreja vinculada (ID ${churchId})`, federationId: 0 } as Church];
+};
+
 export const normalizeScopeValue = (scopeValue: unknown): string => {
   if (typeof scopeValue === 'string') return scopeValue;
   if (typeof scopeValue === 'number' || typeof scopeValue === 'boolean') return String(scopeValue);
@@ -75,6 +81,7 @@ const FEDERATION_ONLY_PATHS = new Set([
   '/repasses',
   '/users',
   '/ministers',
+  '/ministers-insurance',
   '/ministers-dates',
 ]);
 

@@ -13,6 +13,7 @@ import Celulas from "./pages/Cell";
 import Familias from "./pages/Family";
 import Membros from "./pages/Members";
 import Ministros from "./pages/Ministers";
+import MinistersInsurance from "./pages/MinistersInsurance";
 import DatasPastores from "./pages/DatesMinister";
 import DatasMembers from "./pages/DatesMembers";
 import Repasses from "./pages/Repass";
@@ -58,6 +59,7 @@ function Router() {
       <Route path="/families" component={() => <ProtectedRoute component={Familias} />} />
       <Route path="/members" component={() => <ProtectedRoute component={Membros} />} />
       <Route path="/ministers" component={() => <ProtectedRoute component={Ministros} />} />
+      <Route path="/ministers-insurance" component={() => <ProtectedRoute component={MinistersInsurance} />} />
       <Route path="/ministers-dates" component={() => <ProtectedRoute component={DatasPastores} />} />
       <Route path="/members-dates" component={() => <ProtectedRoute component={DatasMembers} />} />
       <Route path="/repasses" component={() => <ProtectedRoute component={Repasses} />} />
@@ -71,6 +73,7 @@ function Router() {
       <Route path="/familias" component={() => <Redirect to="/families" />} />
       <Route path="/membros" component={() => <Redirect to="/members" />} />
       <Route path="/ministros" component={() => <Redirect to="/ministers" />} />
+      <Route path="/seguro-ministros" component={() => <Redirect to="/ministers-insurance" />} />
       <Route path="/datas-pastores" component={() => <Redirect to="/ministers-dates" />} />
       <Route path="/datas-membros" component={() => <Redirect to="/members-dates" />} />
       <Route path="/configuracoes" component={() => <Redirect to="/settings" />} />

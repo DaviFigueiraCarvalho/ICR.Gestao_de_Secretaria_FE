@@ -3,9 +3,12 @@ import ICRLayout from '../components/ICRLayout';
 import CRUDTable, { Column } from '../components/CRUDTable';
 import SmartSelect from '../components/SmartSelect';
 import { useICRApi, Minister, Member } from '../hooks/useICRApi';
+import { settledValue } from '@/lib/utils';
 import { useViaCEP } from '../hooks/useViaCEP';
 import { useLocation } from 'wouter';
 import { toast } from 'sonner';
+import { getMinisterCoverageBadgeClass, getMinisterCoverageLabel, resolveMinisterCoverageStatus, summarizeMinisterCoverage } from '../lib/minister-coverage';
+import { useMemo } from 'react';
 
 interface MinistroForm {
   memberId: number | '';
@@ -68,20 +71,28 @@ export default function Ministros() {
   });
   const [saving, setSaving] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
+  const [selectedMinister, setSelectedMinister] = useState<Minister | null>(null);
   const handledPrefillRef = useRef<string | null>(null);
   const selectedMember = members.find((member) => member.id === form.memberId);
   const isSelectedMemberPresbitero = getMemberRoleValue(selectedMember?.role) === PRESBITERO_ROLE;
+
+  const coverageSummary = useMemo(() => summarizeMinisterCoverage(data), [data]);
 
   const load = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const [ministersResult, membersResult] = await Promise.all([
+      const [ministersResult, membersResult] = await Promise.allSettled([
         fetchApi<Minister[]>('/api/ministers?page=1&pageSize=100'),
         fetchApi<Member[]>('/api/members?page=1&pageSize=100'),
       ]);
-      setData(Array.isArray(ministersResult) ? ministersResult : []);
-      setMembers(Array.isArray(membersResult) ? membersResult : []);
+
+      if (ministersResult.status === 'rejected') {
+        throw ministersResult.reason;
+      }
+
+      setData(Array.isArray(ministersResult.value) ? ministersResult.value : []);
+      setMembers(settledValue(membersResult) ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar ministros');
     } finally {
@@ -231,15 +242,113 @@ export default function Ministros() {
   const columns: Column<Minister>[] = [
     { key: 'id', label: 'ID' },
     { key: 'memberName', label: 'Nome', render: (item) => item.memberName || '-' },
-    { key: 'churchMemberName', label: 'Igreja', render: (item) => item.churchMemberName || '-' },
-    { key: 'federationMemberName', label: 'Federação', render: (item) => item.federationMemberName || '-' },
+    { key: 'phone', label: 'Telefone', render: (item) => item.member?.cellPhone || '-' },
     { key: 'email', label: 'E-mail', render: (item) => item.email || '-' },
-    { key: 'cpf', label: 'CPF', render: (item) => item.cpf || '-' },
-    { key: 'cardValidity', label: 'Validade Carteira', render: (item) => item.cardValidity ? new Date(item.cardValidity).toLocaleDateString('pt-BR') : '-' },
-    { key: 'ministerOrdinationDate', label: 'Ordenação a Pastor', render: (item) => item.ministerOrdinationDate ? new Date(item.ministerOrdinationDate).toLocaleDateString('pt-BR') : '-' },
+    { key: 'memberBirthday', label: 'Nascimento', render: (item) => item.memberBirthday ? new Date(item.memberBirthday).toLocaleDateString('pt-BR') : '-' },
+    { key: 'memberWeddingDate', label: 'Casamento', render: (item) => item.memberWeddingDate ? new Date(item.memberWeddingDate).toLocaleDateString('pt-BR') : '-' },
+    {
+      key: 'coverage',
+      label: 'Cobertura',
+      render: (item) => (
+        <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-medium ${getMinisterCoverageBadgeClass(item)}`}>
+          {getMinisterCoverageLabel(item)}
+        </span>
+      ),
+    },
+    {
+      key: 'details',
+      label: 'Card',
+      render: (item) => (
+        <button
+          type="button"
+          onClick={() => setSelectedMinister(item)}
+          className="rounded-lg border border-white/15 bg-white/5 px-3 py-1.5 text-xs font-['Nunito'] text-white/80 hover:border-[#017158] hover:text-white transition-colors"
+        >
+          Ver card
+        </button>
+      ),
+    },
   ];
 
   const setF = (key: keyof MinistroForm, val: string | number) => setForm(prev => ({ ...prev, [key]: val }));
+
+  const topContent = (
+    <div className="space-y-3">
+      <div className="grid gap-3 md:grid-cols-3">
+        <div className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
+          <p className="text-white/50 text-xs uppercase tracking-[0.2em] font-['Nunito']">Total</p>
+          <p className="text-white text-2xl font-['Nunito'] font-semibold">{coverageSummary.total}</p>
+        </div>
+        <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-3">
+          <p className="text-emerald-200 text-xs uppercase tracking-[0.2em] font-['Nunito']">Segurados / elegíveis</p>
+          <p className="text-white text-2xl font-['Nunito'] font-semibold">{coverageSummary.covered}</p>
+        </div>
+        <div className="rounded-xl border border-rose-500/20 bg-rose-500/10 px-4 py-3">
+          <p className="text-rose-200 text-xs uppercase tracking-[0.2em] font-['Nunito']">Não segurados</p>
+          <p className="text-white text-2xl font-['Nunito'] font-semibold">{coverageSummary.uncovered}</p>
+        </div>
+      </div>
+    </div>
+  );
+
+  const ministerCard = selectedMinister ? (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+      <div className="w-full max-w-2xl rounded-3xl border border-white/10 bg-[#202020] shadow-2xl">
+        <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
+          <div>
+            <p className="text-white/50 text-xs uppercase tracking-[0.2em] font-['Nunito']">Card do ministro</p>
+            <h3 className="text-white text-2xl font-['Nunito'] font-semibold">{selectedMinister.memberName || 'Ministro'}</h3>
+          </div>
+          <button onClick={() => setSelectedMinister(null)} className="text-white/50 hover:text-white transition-colors">
+            <span className="material-icons">close</span>
+          </button>
+        </div>
+
+        <div className="grid gap-4 px-6 py-6 md:grid-cols-[1.2fr_0.8fr]">
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-white/50 text-xs uppercase tracking-[0.2em] font-['Nunito']">Status</p>
+                  <p className="text-white text-lg font-['Nunito']">{getMinisterCoverageLabel(selectedMinister)}</p>
+                </div>
+                <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${getMinisterCoverageBadgeClass(selectedMinister)}`}>
+                  {getMinisterCoverageLabel(selectedMinister)}
+                </span>
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <InfoTile label="Telefone" value={selectedMinister.member?.cellPhone || '-'} />
+              <InfoTile label="E-mail" value={selectedMinister.email || '-'} />
+              <InfoTile label="Nascimento" value={selectedMinister.memberBirthday ? new Date(selectedMinister.memberBirthday).toLocaleDateString('pt-BR') : '-'} />
+              <InfoTile label="Casamento" value={selectedMinister.memberWeddingDate ? new Date(selectedMinister.memberWeddingDate).toLocaleDateString('pt-BR') : '-'} />
+              <InfoTile label="CPF" value={selectedMinister.cpf || '-'} />
+              <InfoTile label="Validade da carteira" value={selectedMinister.cardValidity ? new Date(selectedMinister.cardValidity).toLocaleDateString('pt-BR') : '-'} />
+            </div>
+          </div>
+
+          <div className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+            <InfoTile label="Igreja" value={selectedMinister.churchMemberName || '-'} compact />
+            <InfoTile label="Federação" value={selectedMinister.federationMemberName || '-'} compact />
+            <InfoTile label="Ordenação Presbítero" value={selectedMinister.presbiterOrdinationDate ? new Date(selectedMinister.presbiterOrdinationDate).toLocaleDateString('pt-BR') : '-'} compact />
+            <InfoTile label="Ordenação a Pastor" value={selectedMinister.ministerOrdinationDate ? new Date(selectedMinister.ministerOrdinationDate).toLocaleDateString('pt-BR') : '-'} compact />
+            <InfoTile label="Endereço" value={selectedMinister.address ? [selectedMinister.address.street, selectedMinister.address.number, selectedMinister.address.city, selectedMinister.address.state].filter(Boolean).join(', ') : '-'} compact />
+            <InfoTile label="CEP" value={selectedMinister.address?.zipCode || '-'} compact />
+          </div>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  function InfoTile({ label, value, compact = false }: { label: string; value: string; compact?: boolean }) {
+    return (
+      <div className={`rounded-xl border border-white/10 ${compact ? 'bg-black/10 px-3 py-2' : 'bg-black/10 p-4'}`}>
+        <p className="text-white/45 text-[11px] uppercase tracking-[0.2em] font-['Nunito']">{label}</p>
+        <p className={`text-white ${compact ? 'text-sm' : 'text-base'} font-['Nunito'] break-words`}>{value}</p>
+      </div>
+    );
+  }
 
   return (
     <ICRLayout title="Pastores e Presbíteros">
@@ -256,7 +365,10 @@ export default function Ministros() {
         searchPlaceholder="Buscar ministro..."
         emptyMessage="Nenhum ministro encontrado"
         addLabel="Novo Ministro"
+        topContent={topContent}
       />
+
+      {ministerCard}
 
       {showModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">

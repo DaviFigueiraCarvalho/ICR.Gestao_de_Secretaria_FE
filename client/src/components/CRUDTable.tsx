@@ -17,6 +17,9 @@ interface CRUDTableProps<T extends { id: number }> {
   isLoading?: boolean;
   error?: string | null;
   onAdd?: () => void;
+  onView?: (item: T) => void;
+  viewLabel?: string;
+  viewIcon?: string;
   onEdit?: (item: T) => void;
   onDelete?: (item: T) => void;
   onRefresh?: () => void;
@@ -46,6 +49,9 @@ export default function CRUDTable<T extends { id: number }>({
   isLoading,
   error,
   onAdd,
+  onView,
+  viewLabel = 'Ver',
+  viewIcon = 'visibility',
   onEdit,
   onDelete,
   onRefresh,
@@ -332,7 +338,7 @@ export default function CRUDTable<T extends { id: number }>({
                       {col.label}
                     </th>
                   ))}
-                  {(onEdit || onDelete) && (
+                  {(onView || onEdit || onDelete) && (
                     <th className="text-right px-4 py-3 text-white/60 font-['Nunito'] text-xs font-semibold uppercase tracking-wider">
                       Ações
                     </th>
@@ -355,9 +361,18 @@ export default function CRUDTable<T extends { id: number }>({
                         {getCellValue(item, col)}
                       </td>
                     ))}
-                    {(onEdit || onDelete) && (
+                    {(onView || onEdit || onDelete) && (
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-2">
+                          {onView && (
+                            <button
+                              onClick={() => onView(item)}
+                              className="p-1.5 rounded-lg text-white/40 hover:text-[#017158] hover:bg-[#017158]/10 transition-colors"
+                              title={viewLabel}
+                            >
+                              <span className="material-icons text-[18px]">{viewIcon}</span>
+                            </button>
+                          )}
                           {onEdit && (
                             <button
                               onClick={() => onEdit(item)}

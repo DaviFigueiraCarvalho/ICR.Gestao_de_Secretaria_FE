@@ -570,6 +570,122 @@
         }
       }
     },
+    "/api/v1/dashboard/classes/national": {
+      "get": {
+        "tags": [
+          "Dashboard"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/dashboard/classes/federation/{federationId}": {
+      "get": {
+        "tags": [
+          "Dashboard"
+        ],
+        "parameters": [
+          {
+            "name": "federationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/dashboard/classes/church/{churchId}": {
+      "get": {
+        "tags": [
+          "Dashboard"
+        ],
+        "parameters": [
+          {
+            "name": "churchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/dashboard/member-roles/national": {
+      "get": {
+        "tags": [
+          "Dashboard"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/dashboard/member-roles/federation/{federationId}": {
+      "get": {
+        "tags": [
+          "Dashboard"
+        ],
+        "parameters": [
+          {
+            "name": "federationId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/dashboard/member-roles/church/{churchId}": {
+      "get": {
+        "tags": [
+          "Dashboard"
+        ],
+        "parameters": [
+          {
+            "name": "churchId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/families": {
       "get": {
         "tags": [
@@ -577,7 +693,7 @@
         ],
         "parameters": [
           {
-            "name": "page",
+            "name": "pageNumber",
             "in": "query",
             "schema": {
               "type": "integer",
@@ -586,7 +702,7 @@
             }
           },
           {
-            "name": "pageSize",
+            "name": "pageQuantity",
             "in": "query",
             "schema": {
               "type": "integer",
@@ -985,7 +1101,7 @@
         ],
         "parameters": [
           {
-            "name": "page",
+            "name": "pageNumber",
             "in": "query",
             "schema": {
               "type": "integer",
@@ -994,7 +1110,7 @@
             }
           },
           {
-            "name": "pageSize",
+            "name": "pageQuantity",
             "in": "query",
             "schema": {
               "type": "integer",
@@ -1371,6 +1487,134 @@
         }
       }
     },
+    "/api/members/stats/classes": {
+      "get": {
+        "tags": [
+          "Member"
+        ],
+        "parameters": [
+          {
+            "name": "federationId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "churchId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "cellId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MemberClassCountDTO"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MemberClassCountDTO"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MemberClassCountDTO"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/members/stats/roles": {
+      "get": {
+        "tags": [
+          "Member"
+        ],
+        "parameters": [
+          {
+            "name": "federationId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "churchId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "cellId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MemberRoleCountDTO"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MemberRoleCountDTO"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MemberRoleCountDTO"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/ministers": {
       "post": {
         "tags": [
@@ -1424,7 +1668,7 @@
         ],
         "parameters": [
           {
-            "name": "page",
+            "name": "pageNumber",
             "in": "query",
             "schema": {
               "type": "integer",
@@ -1433,7 +1677,7 @@
             }
           },
           {
-            "name": "pageSize",
+            "name": "pageQuantity",
             "in": "query",
             "schema": {
               "type": "integer",
@@ -1659,6 +1903,44 @@
         }
       }
     },
+    "/api/ministers/insured": {
+      "get": {
+        "tags": [
+          "Minister"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MinisterInsuredListDTO"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MinisterInsuredListDTO"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/MinisterInsuredListDTO"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/ministers/birthdays/month/{month}": {
       "get": {
         "tags": [
@@ -1824,7 +2106,7 @@
             "schema": {
               "type": "integer",
               "format": "int32",
-              "default": 10
+              "default": 50
             }
           }
         ],
@@ -3432,6 +3714,24 @@
         },
         "additionalProperties": false
       },
+      "MemberClassCountDTO": {
+        "type": "object",
+        "properties": {
+          "class": {
+            "$ref": "#/components/schemas/ClassType"
+          },
+          "className": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
       "MemberDTO": {
         "type": "object",
         "properties": {
@@ -3592,6 +3892,24 @@
         "type": "integer",
         "format": "int32"
       },
+      "MemberRoleCountDTO": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "$ref": "#/components/schemas/MemberRole"
+          },
+          "roleName": {
+            "type": "string",
+            "nullable": true,
+            "readOnly": true
+          },
+          "total": {
+            "type": "integer",
+            "format": "int32"
+          }
+        },
+        "additionalProperties": false
+      },
       "Minister": {
         "type": "object",
         "properties": {
@@ -3626,6 +3944,9 @@
             "type": "string",
             "format": "date-time",
             "nullable": true
+          },
+          "insurance": {
+            "type": "boolean"
           },
           "address": {
             "$ref": "#/components/schemas/Address"
@@ -3689,6 +4010,35 @@
         },
         "additionalProperties": false
       },
+      "MinisterInsuredListDTO": {
+        "type": "object",
+        "properties": {
+          "fullName": {
+            "type": "string",
+            "nullable": true
+          },
+          "birthDate": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cpf": {
+            "type": "string",
+            "nullable": true
+          },
+          "email": {
+            "type": "string",
+            "nullable": true
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true
+          },
+          "insurance": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
       "MinisterPatchDTO": {
         "type": "object",
         "properties": {
@@ -3703,6 +4053,10 @@
           },
           "email": {
             "type": "string",
+            "nullable": true
+          },
+          "insurance": {
+            "type": "boolean",
             "nullable": true
           },
           "cardValidity": {
@@ -3768,6 +4122,9 @@
           "email": {
             "type": "string",
             "nullable": true
+          },
+          "insurance": {
+            "type": "boolean"
           },
           "cardValidity": {
             "type": "string",
@@ -4006,16 +4363,6 @@
             "format": "int64"
           },
           "memberId": {
-            "type": "integer",
-            "format": "int64",
-            "nullable": true
-          },
-          "churchId": {
-            "type": "integer",
-            "format": "int64",
-            "nullable": true
-          },
-          "federationId": {
             "type": "integer",
             "format": "int64",
             "nullable": true

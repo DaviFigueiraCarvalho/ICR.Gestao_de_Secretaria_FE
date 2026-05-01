@@ -4,13 +4,13 @@
   "type": "module",
   "license": "MIT",
   "scripts": {
-  "dev": "cross-env NODE_ENV=development tsx watch server/_core/index.ts",
-  "build": "vite build && esbuild server/_core/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
-  "start": "NODE_ENV=production node dist/index.js",
-  "check": "tsc --noEmit",
-  "format": "prettier --write .",
-  "test": "vitest run",
-  "db:push": "drizzle-kit generate && drizzle-kit migrate"
+    "dev": "cross-env NODE_ENV=development tsx watch server/_core/index.ts",
+    "build": "vite build && esbuild server/_core/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist",
+    "start": "NODE_ENV=production node dist/index.js",
+    "check": "tsc --noEmit",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "db:push": "drizzle-kit generate && drizzle-kit migrate"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.693.0",
@@ -59,6 +59,7 @@
     "framer-motion": "^12.23.22",
     "input-otp": "^1.4.2",
     "jose": "6.1.0",
+    "jspdf": "^4.2.1",
     "lucide-react": "^0.453.0",
     "mysql2": "^3.15.0",
     "nanoid": "^5.1.5",
