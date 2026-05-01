@@ -560,8 +560,8 @@ export default function Familias() {
                         Ativar
                       </label>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 opacity-100">
-                      <div className="md:col-span-2">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 opacity-100">
+                      <div>
                         <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Nome do marido *</label>
                         <input
                           type="text"
@@ -570,6 +570,27 @@ export default function Familias() {
                           disabled={!createManMember}
                           className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
                           placeholder="Nome do marido"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Telefone</label>
+                        <input
+                          type="text"
+                          value={manDraft.cellPhone}
+                          onChange={(event) => setManDraft((prev) => ({ ...prev, cellPhone: event.target.value }))}
+                          disabled={!createManMember}
+                          className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                          placeholder="Opcional"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Nascimento</label>
+                        <input
+                          type="date"
+                          value={manDraft.birthDate}
+                          onChange={(event) => setManDraft((prev) => ({ ...prev, birthDate: event.target.value }))}
+                          disabled={!createManMember}
+                          className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
                         />
                       </div>
                       <div>
@@ -587,27 +608,6 @@ export default function Familias() {
                             </option>
                           ))}
                         </select>
-                      </div>
-                      <div>
-                        <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Nascimento</label>
-                        <input
-                          type="date"
-                          value={manDraft.birthDate}
-                          onChange={(event) => setManDraft((prev) => ({ ...prev, birthDate: event.target.value }))}
-                          disabled={!createManMember}
-                          className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                        />
-                      </div>
-                      <div className="md:col-span-3">
-                        <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Telefone</label>
-                        <input
-                          type="text"
-                          value={manDraft.cellPhone}
-                          onChange={(event) => setManDraft((prev) => ({ ...prev, cellPhone: event.target.value }))}
-                          disabled={!createManMember}
-                          className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                          placeholder="Opcional"
-                        />
                       </div>
                     </div>
                   </div>
@@ -628,8 +628,8 @@ export default function Familias() {
                         Ativar
                       </label>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                      <div className="md:col-span-2">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
                         <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Nome da mulher *</label>
                         <input
                           type="text"
@@ -638,6 +638,27 @@ export default function Familias() {
                           disabled={!createWomanMember}
                           className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
                           placeholder="Nome da mulher"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Telefone</label>
+                        <input
+                          type="text"
+                          value={womanDraft.cellPhone}
+                          onChange={(event) => setWomanDraft((prev) => ({ ...prev, cellPhone: event.target.value }))}
+                          disabled={!createWomanMember}
+                          className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                          placeholder="Opcional"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Nascimento</label>
+                        <input
+                          type="date"
+                          value={womanDraft.birthDate}
+                          onChange={(event) => setWomanDraft((prev) => ({ ...prev, birthDate: event.target.value }))}
+                          disabled={!createWomanMember}
+                          className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
                         />
                       </div>
                       <div>
@@ -655,27 +676,6 @@ export default function Familias() {
                             </option>
                           ))}
                         </select>
-                      </div>
-                      <div>
-                        <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Nascimento</label>
-                        <input
-                          type="date"
-                          value={womanDraft.birthDate}
-                          onChange={(event) => setWomanDraft((prev) => ({ ...prev, birthDate: event.target.value }))}
-                          disabled={!createWomanMember}
-                          className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                        />
-                      </div>
-                      <div className="md:col-span-3">
-                        <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Telefone</label>
-                        <input
-                          type="text"
-                          value={womanDraft.cellPhone}
-                          onChange={(event) => setWomanDraft((prev) => ({ ...prev, cellPhone: event.target.value }))}
-                          disabled={!createWomanMember}
-                          className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                          placeholder="Opcional"
-                        />
                       </div>
                     </div>
                   </div>
