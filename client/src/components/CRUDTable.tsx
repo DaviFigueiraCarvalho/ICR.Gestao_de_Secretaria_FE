@@ -287,6 +287,7 @@ export default function CRUDTable<T extends { id: number }>({
           {onAdd && (
             <button
               onClick={onAdd}
+              data-testid="crud-add-btn"
               className="flex items-center gap-2 px-4 py-2 bg-[#017158] hover:bg-[#01a07e] text-white rounded-lg transition-colors font-['Nunito'] text-sm font-medium"
             >
               <span className="material-icons text-[18px]">add</span>

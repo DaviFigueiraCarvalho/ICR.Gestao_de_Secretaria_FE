@@ -447,6 +447,7 @@ export default function Usuarios() {
                   type="text"
                   value={form.username}
                   onChange={(e) => setForm((prev) => ({ ...prev, username: e.target.value }))}
+                  data-testid="user-username"
                   className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                   placeholder="Nome de usuário"
                 />
@@ -460,6 +461,7 @@ export default function Usuarios() {
                   type="password"
                   value={form.password}
                   onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
+                  data-testid="user-password"
                   className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                   placeholder={editItem ? 'Informe para alterar' : 'Senha do usuário'}
                 />
@@ -470,6 +472,7 @@ export default function Usuarios() {
                 <select
                   value={form.memberId}
                   onChange={(e) => setForm((prev) => ({ ...prev, memberId: e.target.value ? Number(e.target.value) : '' }))}
+                  data-testid="user-member"
                   className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                 >
                   <option value="">Sem vínculo</option>
@@ -486,6 +489,7 @@ export default function Usuarios() {
                 <select
                   value={form.scope}
                   onChange={(e) => setForm((prev) => ({ ...prev, scope: Number(e.target.value) }))}
+                  data-testid="user-scope"
                   className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                 >
                   <option value={0}>Local</option>
@@ -505,6 +509,7 @@ export default function Usuarios() {
               <button
                 onClick={handleSave}
                 disabled={saving}
+                data-testid="user-save"
                 className="px-4 py-2 rounded-lg bg-[#017158] hover:bg-[#01a07e] text-white transition-colors font-['Nunito'] text-sm font-medium disabled:opacity-50"
               >
                 {saving ? 'Salvando...' : 'Salvar'}

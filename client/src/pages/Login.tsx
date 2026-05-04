@@ -65,6 +65,7 @@ export default function Login() {
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="Digite seu usuário"
+                data-testid="login-username"
                 className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-3 text-white font-['Nunito'] focus:outline-none focus:border-[#017158] transition-colors"
                 disabled={isLoading}
               />
@@ -79,6 +80,7 @@ export default function Login() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Digite sua senha"
+                data-testid="login-password"
                 className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-3 text-white font-['Nunito'] focus:outline-none focus:border-[#017158] transition-colors"
                 disabled={isLoading}
               />
@@ -87,6 +89,7 @@ export default function Login() {
             <button
               type="submit"
               disabled={isLoading}
+              data-testid="login-submit"
               className="w-full bg-[#017158] hover:bg-[#01a07e] text-white font-['Nunito'] font-semibold py-3 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed mt-2"
             >
               {isLoading ? (

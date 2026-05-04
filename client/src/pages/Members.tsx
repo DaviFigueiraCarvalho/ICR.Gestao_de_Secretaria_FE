@@ -620,6 +620,7 @@ export default function Membros() {
               <div>
                 <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Nome *</label>
                 <input type="text" value={form.name} onChange={e => setF('name', e.target.value)}
+                  data-testid="member-name"
                   className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                   placeholder="Nome completo" />
               </div>
@@ -627,6 +628,7 @@ export default function Membros() {
                 <div>
                   <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Gênero</label>
                   <select value={form.gender} onChange={e => handleGenderChange(Number(e.target.value))}
+                    data-testid="member-gender"
                     className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]">
                     <option value={1}>Masculino</option>
                     <option value={2}>Feminino</option>
@@ -636,6 +638,7 @@ export default function Membros() {
                   <div>
                     <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Data de Nascimento</label>
                     <input type="date" max={todayDate} value={form.birthDate} onChange={e => setF('birthDate', e.target.value)}
+                      data-testid="member-birth-date"
                       className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]" />
                   </div>
                   <div>
@@ -647,6 +650,7 @@ export default function Membros() {
                       maxLength={15}
                       value={formatPhone(form.cellPhone)}
                       onChange={e => setF('cellPhone', normalizePhone(e.target.value))}
+                      data-testid="member-cell-phone"
                       className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                       placeholder="(21) 90000-0000"
                     />
@@ -658,6 +662,7 @@ export default function Membros() {
                   onSelect={(id) => setF('familyId', id)}
                   items={scopedFamilies.map((f) => ({ id: f.id, name: f.name }))}
                   placeholder="Selecione uma família"
+                  testId="member-family"
                 />
               </div>
               <div>
@@ -665,6 +670,7 @@ export default function Membros() {
                 <select
                   value={form.role}
                   onChange={e => setF('role', e.target.value === '' ? '' : Number(e.target.value))}
+                  data-testid="member-role"
                   className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                 >
                   <option value={0}>Sem função</option>
@@ -799,6 +805,7 @@ export default function Membros() {
               <div className="flex items-center gap-3">
                 <input type="checkbox" id="hasBeenMarried" checked={form.hasBeenMarried}
                   onChange={e => setF('hasBeenMarried', e.target.checked)}
+                  data-testid="member-been-married"
                   className="w-4 h-4 accent-[#017158]" />
                 <label htmlFor="hasBeenMarried" className="text-white/70 text-sm font-['Nunito']">
                   Já foi casado(a)
@@ -812,6 +819,7 @@ export default function Membros() {
                 Cancelar
               </button>
               <button onClick={handleSave} disabled={saving}
+                data-testid="member-save"
                 className="px-4 py-2 rounded-lg bg-[#017158] hover:bg-[#01a07e] text-white transition-colors font-['Nunito'] text-sm font-medium disabled:opacity-50">
                 {saving ? 'Salvando...' : 'Salvar'}
               </button>

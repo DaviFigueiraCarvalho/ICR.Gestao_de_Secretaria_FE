@@ -379,6 +379,7 @@ export default function Ministros() {
                   items={members.map((m) => ({ id: m.id, name: m.name }))}
                   placeholder="Selecione um membro"
                   required
+                  testId="minister-member"
                 />
                 <div>
                   <label className="text-white/70 text-sm font-['Nunito'] block mb-1">CPF</label>
@@ -389,6 +390,7 @@ export default function Ministros() {
                     maxLength={14}
                     value={formatCPF(form.cpf)}
                     onChange={e => setF('cpf', normalizeCPF(e.target.value))}
+                    data-testid="minister-cpf"
                     className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                     placeholder="000.000.000-00"
                   />
@@ -396,23 +398,27 @@ export default function Ministros() {
                 <div className="col-span-2">
                   <label className="text-white/70 text-sm font-['Nunito'] block mb-1">E-mail</label>
                   <input type="email" value={form.email} onChange={e => setF('email', e.target.value)}
+                    data-testid="minister-email"
                     className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                     placeholder="email@exemplo.com" />
                 </div>
                 <div>
                   <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Validade Carteira</label>
                   <input type="date" value={form.cardValidity} onChange={e => setF('cardValidity', e.target.value)}
+                    data-testid="minister-card-validity"
                     className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]" />
                 </div>
                 <div>
                   <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Ordenação Presbítero</label>
                   <input type="date" max={todayDate} value={form.presbiterOrdinationDate} onChange={e => setF('presbiterOrdinationDate', e.target.value)}
+                    data-testid="minister-presbitero-ordination"
                     className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]" />
                 </div>
                 {!isSelectedMemberPresbitero && (
                   <div>
                     <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Ordenação a Pastor</label>
                     <input type="date" max={todayDate} value={form.ministerOrdinationDate} onChange={e => setF('ministerOrdinationDate', e.target.value)}
+                      data-testid="minister-ordination"
                       className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]" />
                   </div>
                 )}
@@ -431,6 +437,7 @@ export default function Ministros() {
                       pattern="[0-9]*"
                       maxLength={9}
                       disabled={cepLoading}
+                      data-testid="minister-zipcode"
                       className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
                       placeholder="00000-000" 
                     />
@@ -439,24 +446,28 @@ export default function Ministros() {
                   <div>
                     <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Número</label>
                     <input type="text" value={form.number} onChange={e => setF('number', e.target.value)}
+                      data-testid="minister-number"
                       className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                       placeholder="Nº" />
                   </div>
                   <div className="col-span-2">
                     <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Rua</label>
                     <input type="text" value={form.street} onChange={e => setF('street', e.target.value)}
+                      data-testid="minister-street"
                       className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                       placeholder="Nome da rua" />
                   </div>
                   <div>
                     <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Cidade</label>
                     <input type="text" value={form.city} onChange={e => setF('city', e.target.value)}
+                      data-testid="minister-city"
                       className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                       placeholder="Cidade" />
                   </div>
                   <div>
                     <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Estado</label>
                     <input type="text" value={form.state} onChange={e => setF('state', e.target.value)}
+                      data-testid="minister-state"
                       className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                       placeholder="UF" maxLength={2} />
                   </div>
@@ -470,6 +481,7 @@ export default function Ministros() {
                 Cancelar
               </button>
               <button onClick={handleSave} disabled={saving}
+                data-testid="minister-save"
                 className="px-4 py-2 rounded-lg bg-[#017158] hover:bg-[#01a07e] text-white transition-colors font-['Nunito'] text-sm font-medium disabled:opacity-50">
                 {saving ? 'Salvando...' : 'Salvar'}
               </button>

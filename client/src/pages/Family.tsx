@@ -622,6 +622,7 @@ export default function Familias() {
               <div>
                 <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Nome *</label>
                 <input type="text" value={form.name} onChange={e => setF('name', e.target.value)}
+                  data-testid="family-name"
                   className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                   placeholder="Nome da família" />
               </div>
@@ -637,6 +638,7 @@ export default function Familias() {
                   placeholder="Selecione uma igreja"
                   required
                   disabled={isLocalScope}
+                  testId="family-church"
                 />
                 <SmartSelect
                   label="Célula"
@@ -645,11 +647,13 @@ export default function Familias() {
                   items={availableCells.map(c => ({ id: c.id, name: c.name }))}
                   placeholder={form.churchId ? 'Selecione uma célula' : 'Escolha uma igreja primeiro'}
                   disabled={!form.churchId}
+                  testId="family-cell"
                 />
               </div>
               <div>
                 <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Data de Casamento</label>
                 <input type="date" max={todayDate} value={form.weddingDate} onChange={e => setF('weddingDate', e.target.value)}
+                  data-testid="family-wedding-date"
                   className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]" />
               </div>
 
@@ -679,6 +683,7 @@ export default function Familias() {
                           value={manDraft.name}
                           onChange={(event) => setManDraft((prev) => ({ ...prev, name: event.target.value }))}
                           disabled={!createManMember}
+                          data-testid="family-man-name"
                           className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
                           placeholder="Nome do marido"
                         />
@@ -873,6 +878,7 @@ export default function Familias() {
                           value={womanDraft.name}
                           onChange={(event) => setWomanDraft((prev) => ({ ...prev, name: event.target.value }))}
                           disabled={!createWomanMember}
+                          data-testid="family-woman-name"
                           className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
                           placeholder="Nome da mulher"
                         />
@@ -945,6 +951,7 @@ export default function Familias() {
                 Cancelar
               </button>
               <button onClick={handleSave} disabled={saving}
+                data-testid="family-save"
                 className="px-4 py-2 rounded-lg bg-[#017158] hover:bg-[#01a07e] text-white transition-colors font-['Nunito'] text-sm font-medium disabled:opacity-50">
                 {saving ? 'Salvando...' : 'Salvar'}
               </button>

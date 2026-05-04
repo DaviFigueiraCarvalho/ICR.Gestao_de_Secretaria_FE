@@ -327,6 +327,7 @@ const handleSave = async () => {
                 <div className="col-span-2">
                   <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Nome *</label>
                   <input type="text" value={form.name} onChange={e => setF('name', e.target.value)}
+                    data-testid="church-name"
                     className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                     placeholder="Nome da igreja" />
                 </div>
@@ -343,6 +344,7 @@ const handleSave = async () => {
                   placeholder="Selecione uma área"
                   required
                   disabled={isFederatedScope}
+                  testId="church-federation"
                 />
                 <SmartSelect
                   label="Ministro"
@@ -350,6 +352,7 @@ const handleSave = async () => {
                   onSelect={(id) => setF('ministerId', id)}
                   items={ministers.map((m) => ({ id: m.id, name: m.memberName || m.id.toString() }))}
                   placeholder="Selecione um ministro"
+                  testId="church-minister"
                 />
               </div>
 
@@ -363,6 +366,7 @@ const handleSave = async () => {
                       value={form.zipCode} 
                       onChange={e => handleCEPChange(e.target.value)}
                       disabled={cepLoading}
+                      data-testid="church-zipcode"
                       className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
                       placeholder="00000-000" 
                     />
@@ -371,24 +375,28 @@ const handleSave = async () => {
                   <div>
                     <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Número</label>
                     <input type="text" value={form.number} onChange={e => setF('number', e.target.value)}
+                      data-testid="church-number"
                       className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                       placeholder="Nº" />
                   </div>
                   <div className="col-span-2">
                     <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Rua</label>
                     <input type="text" value={form.street} onChange={e => setF('street', e.target.value)}
+                      data-testid="church-street"
                       className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                       placeholder="Nome da rua" />
                   </div>
                   <div>
                     <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Cidade</label>
                     <input type="text" value={form.city} onChange={e => setF('city', e.target.value)}
+                      data-testid="church-city"
                       className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                       placeholder="Cidade" />
                   </div>
                   <div>
                     <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Estado</label>
                     <input type="text" value={form.state} onChange={e => setF('state', e.target.value)}
+                      data-testid="church-state"
                       className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                       placeholder="UF" maxLength={2} />
                   </div>
@@ -402,6 +410,7 @@ const handleSave = async () => {
                 Cancelar
               </button>
               <button onClick={handleSave} disabled={saving}
+                data-testid="church-save"
                 className="px-4 py-2 rounded-lg bg-[#017158] hover:bg-[#01a07e] text-white transition-colors font-['Nunito'] text-sm font-medium disabled:opacity-50">
                 {saving ? 'Salvando...' : 'Salvar'}
               </button>

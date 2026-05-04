@@ -409,6 +409,7 @@ export default function Repasses() {
                 <select
                   value={form.churchId}
                   onChange={e => setForm({ ...form, churchId: e.target.value ? Number(e.target.value) : '' })}
+                  data-testid="repass-church"
                   className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                 >
                   <option value="">Selecione a igreja</option>

@@ -139,6 +139,7 @@ export default function Federacoes() {
                   type="text"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  data-testid="federation-name"
                   className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] transition-colors"
                   placeholder="Nome da área"
                 />
@@ -149,6 +150,7 @@ export default function Federacoes() {
                 onSelect={(id) => setForm({ ...form, ministerId: id })}
                 items={members.map((m) => ({ id: m.id, name: m.name }))}
                 placeholder="Selecione um ministro"
+                testId="federation-minister"
               />
             </div>
 
@@ -162,6 +164,7 @@ export default function Federacoes() {
               <button
                 onClick={handleSave}
                 disabled={saving}
+                data-testid="federation-save"
                 className="px-4 py-2 rounded-lg bg-[#017158] hover:bg-[#01a07e] text-white transition-colors font-['Nunito'] text-sm font-medium disabled:opacity-50"
               >
                 {saving ? 'Salvando...' : 'Salvar'}

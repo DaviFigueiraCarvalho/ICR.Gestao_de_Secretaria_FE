@@ -379,6 +379,7 @@ export default function Celulas() {
               <div>
                 <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Nome *</label>
                 <input type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
+                  data-testid="cell-name"
                   className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                   placeholder="Nome da célula" />
               </div>
@@ -387,6 +388,7 @@ export default function Celulas() {
                 <select
                   value={form.type}
                   onChange={e => setForm({ ...form, type: e.target.value === '' ? '' : Number(e.target.value) })}
+                  data-testid="cell-type"
                   className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white focus:border-[#017158] outline-none"
                 >
                   <option value="">Selecione um tipo</option>
@@ -400,6 +402,7 @@ export default function Celulas() {
                 <select 
                   value={form.churchId} 
                   onChange={e => setForm({ ...form, churchId: e.target.value ? Number(e.target.value) : '' })}
+                  data-testid="cell-church"
                   className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white focus:border-[#017158] outline-none"
                   disabled={isLocalScope}
                 >
@@ -415,6 +418,7 @@ export default function Celulas() {
                 onSelect={(id) => setForm({ ...form, responsibleId: id })}
                 items={scopedMembers.map((m) => ({ id: m.id, name: m.name }))}
                 placeholder="Selecione um responsável"
+                testId="cell-responsible"
               />
             </div>
 
@@ -424,6 +428,7 @@ export default function Celulas() {
                 Cancelar
               </button>
               <button onClick={handleSave} disabled={saving}
+                data-testid="cell-save"
                 className="px-4 py-2 rounded-lg bg-[#017158] hover:bg-[#01a07e] text-white transition-colors font-['Nunito'] text-sm font-medium disabled:opacity-50">
                 {saving ? 'Salvando...' : 'Salvar'}
               </button>
