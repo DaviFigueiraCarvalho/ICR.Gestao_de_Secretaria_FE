@@ -2,6 +2,16 @@ import { useEffect, useState, useMemo } from 'react';
 import ICRLayout from '../components/ICRLayout';
 import { useICRApi, Repass, Reference, Church } from '../hooks/useICRApi';
 import { useTheme } from '../contexts/ThemeContext';
+import { Button } from '../components/ui/button';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog';
+import { Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { isPermissionError } from '@/lib/utils';
 import { settledValue } from '@/lib/utils';
@@ -21,6 +31,131 @@ interface RepassForm {
   amount: number | '';
 }
 
+interface ReferenceResponse {
+  id: number;
+  name?: string;
+  competenceDate?: string;
+  createdAt?: string;
+  resultMessage?: string;
+}
+
+const MONTH_NAMES = [
+  'janeiro',
+  'fevereiro',
+  'março',
+  'abril',
+  'maio',
+  'junho',
+  'julho',
+  'agosto',
+  'setembro',
+  'outubro',
+  'novembro',
+  'dezembro',
+];
+
+const MONTH_ABBR = [
+  'JAN',
+  'FEV',
+  'MAR',
+  'ABR',
+  'MAI',
+  'JUN',
+  'JUL',
+  'AGO',
+  'SET',
+  'OUT',
+  'NOV',
+  'DEZ',
+];
+
+const MONTH_LOOKUP: Record<string, number> = {
+  JAN: 0,
+  FEV: 1,
+  MAR: 2,
+  ABR: 3,
+  MAI: 4,
+  JUN: 5,
+  JUL: 6,
+  AGO: 7,
+  SET: 8,
+  OUT: 9,
+  NOV: 10,
+  DEZ: 11,
+};
+
+const getReferenceSortKey = (reference: Reference) => {
+  const normalizedName = (reference.name || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .trim();
+
+  const match = normalizedName.match(/^([A-Z]{3})[-\s]?([0-9]{2,4})$/);
+  if (match) {
+    const monthIndex = MONTH_LOOKUP[match[1]];
+    if (typeof monthIndex === 'number') {
+      const yearValue = match[2].length === 2 ? 2000 + Number(match[2]) : Number(match[2]);
+      return yearValue * 12 + monthIndex;
+    }
+  }
+
+  const competenceDate = reference.competenceDate ? new Date(reference.competenceDate) : null;
+  if (competenceDate && !Number.isNaN(competenceDate.getTime())) {
+    return competenceDate.getFullYear() * 12 + competenceDate.getMonth();
+  }
+
+  return Number.MAX_SAFE_INTEGER;
+};
+
+const sortReferencesChronologically = (items: Reference[]) => {
+  return [...items].sort((a, b) => {
+    const diff = getReferenceSortKey(a) - getReferenceSortKey(b);
+    if (diff !== 0) return diff;
+    return (a.name || '').localeCompare(b.name || '', 'pt-BR', { sensitivity: 'base' });
+  });
+};
+
+const parseReferenceCompetenceDate = (reference?: Reference | null): Date | null => {
+  if (!reference) return null;
+
+  const competenceDate = reference.competenceDate ? new Date(reference.competenceDate) : null;
+  if (competenceDate && !Number.isNaN(competenceDate.getTime())) {
+    return new Date(competenceDate.getFullYear(), competenceDate.getMonth(), 1);
+  }
+
+  const normalizedName = (reference.name || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase()
+    .trim();
+  const match = normalizedName.match(/^([A-Z]{3})[-\s]?([0-9]{2,4})$/);
+  if (!match) return null;
+
+  const monthIndex = MONTH_LOOKUP[match[1]];
+  if (typeof monthIndex !== 'number') return null;
+
+  const yearValue = match[2].length === 2 ? 2000 + Number(match[2]) : Number(match[2]);
+  if (Number.isNaN(yearValue)) return null;
+
+  return new Date(yearValue, monthIndex, 1);
+};
+
+const getLastBusinessDayOfFollowingMonth = (competenceDate: Date): Date => {
+  const deadline = new Date(competenceDate.getFullYear(), competenceDate.getMonth() + 1, 0);
+  while (deadline.getDay() === 0 || deadline.getDay() === 6) {
+    deadline.setDate(deadline.getDate() - 1);
+  }
+  return deadline;
+};
+
+const formatDateBR = (date: Date) => {
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = String(date.getFullYear());
+  return `${day}/${month}/${year}`;
+};
+
 export default function Repasses() {
   const { fetchApi } = useICRApi();
   const { theme } = useTheme();
@@ -36,6 +171,16 @@ export default function Repasses() {
   const [form, setForm] = useState<RepassForm>({ churchId: '', reference: '', amount: '' });
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
+  const [showReferenceModal, setShowReferenceModal] = useState(false);
+  const [referenceDate, setReferenceDate] = useState('');
+  const [showPendingMessageModal, setShowPendingMessageModal] = useState(false);
+  const [pendingMessageContent, setPendingMessageContent] = useState('');
+  const [savingReference, setSavingReference] = useState(false);
+
+  const selectedReference = useMemo(
+    () => references.find((ref) => ref.id === selectedRef) || null,
+    [references, selectedRef],
+  );
 
   const loadAll = async () => {
     setIsLoading(true);
@@ -48,11 +193,12 @@ export default function Repasses() {
 
       const resolvedRefs = settledValue(refs) ?? [];
       const resolvedChurches = settledValue(churchList) ?? [];
+      const orderedRefs = sortReferencesChronologically(resolvedRefs);
 
-      setReferences(resolvedRefs);
+      setReferences(orderedRefs);
       setChurches(resolvedChurches);
-      if (resolvedRefs.length > 0 && !selectedRef) {
-        setSelectedRef(resolvedRefs[resolvedRefs.length - 1].id);
+      if (orderedRefs.length > 0 && !selectedRef) {
+        setSelectedRef(orderedRefs[orderedRefs.length - 1].id);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar dados');
@@ -198,7 +344,149 @@ export default function Repasses() {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
   };
 
+  const getReferencePreview = (monthValue: string) => {
+    if (!monthValue) return { cobradoEm: '', referenteA: '' };
+
+    const [yearPart, monthPart] = monthValue.split('-');
+    const year = Number(yearPart);
+    const monthIndex = Number(monthPart) - 1;
+
+    if (!year || monthIndex < 0 || monthIndex > 11) return { cobradoEm: '', referenteA: '' };
+
+    const monthName = MONTH_NAMES[monthIndex];
+    const monthLabel = `${monthName.charAt(0).toUpperCase()}${monthName.slice(1)} - ${String(year).slice(-2)}`;
+
+    const previousDate = new Date(year, monthIndex - 1, 1);
+    const previousMonthIndex = previousDate.getMonth();
+    const previousYear = previousDate.getFullYear();
+    const referenceLabel = `${MONTH_ABBR[previousMonthIndex]}-${String(previousYear).slice(-2)}`;
+
+    return { cobradoEm: monthLabel, referenteA: referenceLabel };
+  };
+
+  const getTodayMonth = () => {
+    const now = new Date();
+    return new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 7);
+  };
+
+  const toReferenceDateTime = (monthValue: string) => {
+    return new Date(`${monthValue}-01T00:00:00`).toISOString();
+  };
+
+  const openReferenceModal = () => {
+    setReferenceDate(getTodayMonth());
+    setShowReferenceModal(true);
+  };
+
+  const handleCreateReference = async () => {
+    if (!referenceDate) {
+      toast.error('Selecione o mês cobrado');
+      return;
+    }
+
+    setSavingReference(true);
+    try {
+      const response = await fetchApi<ReferenceResponse>('/api/repasses/references', {
+        method: 'POST',
+        body: JSON.stringify({ competenceDate: toReferenceDateTime(referenceDate) }),
+      });
+
+      toast.success(response.resultMessage || 'Referência criada com sucesso');
+      setShowReferenceModal(false);
+      await loadAll();
+      if (response.id) {
+        setSelectedRef(response.id);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao criar referência');
+    } finally {
+      setSavingReference(false);
+    }
+  };
+
   const selectedRefName = references.find(r => r.id === selectedRef)?.name || '';
+
+  const pendingRows = useMemo(() => {
+    return churches
+      .map((church) => {
+        const repass = repasses.find((item) => item.churchId === church.id);
+        return {
+          churchId: church.id,
+          churchName: church.name,
+          federationName: church.federationName,
+          amount: repass?.amount,
+        };
+      })
+      .filter((row) => !row.amount || row.amount <= 0)
+      .sort((a, b) => {
+        const federationCompare = (a.federationName || '').localeCompare(b.federationName || '', 'pt-BR', {
+          sensitivity: 'base',
+        });
+        if (federationCompare !== 0) return federationCompare;
+
+        return a.churchName.localeCompare(b.churchName, 'pt-BR', { sensitivity: 'base' });
+      });
+  }, [churches, repasses]);
+
+  const buildPendingRepassMessage = () => {
+    if (!selectedReference) {
+      throw new Error('Selecione uma referência para gerar a mensagem');
+    }
+
+    const competenceDate = parseReferenceCompetenceDate(selectedReference);
+    if (!competenceDate) {
+      throw new Error('Não foi possível identificar o mês da referência selecionada');
+    }
+
+    const deadline = getLastBusinessDayOfFollowingMonth(competenceDate);
+    const monthName = MONTH_NAMES[competenceDate.getMonth()];
+    const dueMonthName = MONTH_NAMES[deadline.getMonth()];
+    const monthLabel = `${monthName.charAt(0).toUpperCase()}${monthName.slice(1)}`;
+    const dueMonthLabel = `${dueMonthName.charAt(0).toUpperCase()}${dueMonthName.slice(1)}`;
+
+    const pendingList = pendingRows.length
+      ? pendingRows
+          .map((row, index) => `${index + 1} - \t${row.churchName.toUpperCase()}\t${(row.federationName || 'SEM FEDERAÇÃO').toUpperCase()}`)
+          .join('\n\n')
+      : 'Nenhuma igreja pendente nesta referência.';
+
+    return [
+      'IMPORTANTE',
+      '',
+      `Igrejas sem efetuar o envio das informações por e-mail, ou sem ter feito o Repasse de ${selectedReference.name} até a presente data:`,
+      '',
+      pendingList,
+      '',
+      `Dia ${formatDateBR(deadline)} foi o prazo final para o envio das informações para a Federação, através do e-mail: financeiro@icravivalista.com.br, referente ao mês de ${monthLabel}.`,
+      '',
+      `O repasse de ${selectedReference.name} vence no último dia útil do mês de cobrança (${dueMonthLabel}).`,
+    ].join('\n');
+  };
+
+  const handleGeneratePendingMessage = () => {
+    try {
+      const message = buildPendingRepassMessage();
+      setPendingMessageContent(message);
+      setShowPendingMessageModal(true);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao gerar a mensagem');
+    }
+  };
+
+  const handleCopyPendingMessage = async () => {
+    try {
+      if (!navigator?.clipboard?.writeText) {
+        throw new Error('A cópia automática não está disponível neste navegador');
+      }
+
+      await navigator.clipboard.writeText(pendingMessageContent);
+      toast.success('Mensagem copiada para a área de transferência');
+      setShowPendingMessageModal(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao copiar a mensagem');
+    }
+  };
+  const orderedReferences = useMemo(() => sortReferencesChronologically(references), [references]);
 
   return (
     <ICRLayout title="Repasses">
@@ -233,30 +521,73 @@ export default function Repasses() {
             />
           </div>
         </div>
-        <button
-          onClick={openAdd}
-          className="flex items-center gap-2 px-4 py-2 bg-[#017158] hover:bg-[#01a07e] text-white rounded-lg transition-colors font-['Nunito'] text-sm font-medium"
-        >
-          <span className="material-icons text-[18px]">add</span>
-          Novo Repasse
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleGeneratePendingMessage}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors font-['Nunito'] text-sm font-medium ${
+              isLight
+                ? 'bg-white border border-[#cfe4dc] text-[#0f6d58] hover:bg-[#f2f8f6]'
+                : 'bg-[#2b2b2b] border border-white/20 text-white hover:bg-[#343434]'
+            }`}
+          >
+            <span className="material-icons text-[18px]">content_copy</span>
+            Gerar mensagem
+          </button>
+          <button
+            onClick={openAdd}
+            className="flex items-center gap-2 px-4 py-2 bg-[#017158] hover:bg-[#01a07e] text-white rounded-lg transition-colors font-['Nunito'] text-sm font-medium"
+          >
+            <span className="material-icons text-[18px]">add</span>
+            Novo Repasse
+          </button>
+        </div>
       </div>
 
       {/* Reference tabs */}
-      <div className="flex gap-1 flex-wrap mb-0 overflow-x-auto pb-0">
-        {references.map((ref) => (
+      <div className={`${isLight ? 'bg-white border border-[#cfe4dc]' : 'bg-[#1a1a1a] border border-white/10'} rounded-xl rounded-b-none overflow-hidden mb-0`}>
+        <div className={`flex items-center justify-between gap-3 px-4 py-3 border-b ${isLight ? 'border-[#d8e9e2] bg-[#f8fcfa]' : 'border-white/10 bg-[#111]'}`}>
+          <div>
+            <div className="text-white/55 text-xs font-['Nunito'] uppercase tracking-wider">Referências</div>
+            <div className="text-white/80 text-sm font-['Nunito']">Selecione a referência para ver e editar os repasses.</div>
+          </div>
+          <div className="text-white/45 text-xs font-['Nunito'] uppercase tracking-wider">
+            {references.length} {references.length === 1 ? 'referência' : 'referências'}
+          </div>
+        </div>
+        <div className="flex gap-1 flex-wrap overflow-x-auto px-2 py-2 min-h-[52px]">
+          {orderedReferences.length > 0 ? (
+            orderedReferences.map((ref) => (
+              <button
+                key={ref.id}
+                onClick={() => setSelectedRef(ref.id)}
+                className={`px-4 py-2 text-sm font-['Nunito'] font-medium transition-colors border-b-2 whitespace-nowrap ${
+                  selectedRef === ref.id
+                    ? `${isLight ? 'text-[#0f6d58] border-[#017158] bg-[#017158]/10' : 'text-white border-[#017158] bg-[#017158]/10'}`
+                    : `${isLight ? 'text-[#4b7c70] border-transparent hover:text-[#0f6d58] hover:border-[#017158]/30' : 'text-white/50 border-transparent hover:text-white/80 hover:border-white/20'}`
+                }`}
+              >
+                {ref.name}
+              </button>
+            ))
+          ) : (
+            <div className={`px-4 py-2 text-sm font-['Nunito'] ${isLight ? 'text-[#4b7c70]' : 'text-white/50'}`}>
+              Nenhuma referência disponível
+            </div>
+          )}
           <button
-            key={ref.id}
-            onClick={() => setSelectedRef(ref.id)}
-            className={`px-4 py-2 text-sm font-['Nunito'] font-medium transition-colors border-b-2 whitespace-nowrap ${
-              selectedRef === ref.id
-                ? `${isLight ? 'text-[#0f6d58] border-[#017158] bg-[#017158]/10' : 'text-white border-[#017158] bg-[#017158]/10'}`
-                : `${isLight ? 'text-[#4b7c70] border-transparent hover:text-[#0f6d58] hover:border-[#017158]/30' : 'text-white/50 border-transparent hover:text-white/80 hover:border-white/20'}`
+            type="button"
+            onClick={openReferenceModal}
+            className={`ml-auto inline-flex items-center justify-center gap-1 rounded-md border border-dashed px-3 py-2 text-sm font-['Nunito'] font-medium transition-colors ${
+              isLight
+                ? 'border-[#b6dacd] text-[#0f6d58] hover:bg-[#017158]/10 hover:border-[#017158]'
+                : 'border-white/15 text-white/70 hover:bg-[#017158]/15 hover:border-[#017158]'
             }`}
+            title="Nova referência"
           >
-            {ref.name}
+            <Plus className="h-4 w-4" />
+            Nova referência
           </button>
-        ))}
+        </div>
       </div>
 
       {/* Excel-like table */}
@@ -457,6 +788,86 @@ export default function Repasses() {
           </div>
         </div>
       )}
+
+      <Dialog open={showReferenceModal} onOpenChange={setShowReferenceModal}>
+        <DialogContent className={`${isLight ? 'bg-white border-[#cfe4dc]' : 'bg-[#2b2b2b] border-white/10'} text-white`}>
+          <DialogHeader>
+            <DialogTitle className="font-['Nunito']">Nova referência</DialogTitle>
+            <DialogDescription className={isLight ? 'text-[#4b7c70]' : 'text-white/60'}>
+              Informe o mês cobrado e confira a referência que será criada.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div>
+            <label className={`block mb-1 text-sm font-['Nunito'] ${isLight ? 'text-[#4b7c70]' : 'text-white/70'}`}>
+              Cobrado em: *</label>
+            <input
+              type="month"
+              value={referenceDate}
+              onChange={(e) => setReferenceDate(e.target.value)}
+              className={`w-full rounded-lg border px-4 py-2.5 font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] ${
+                isLight
+                  ? 'bg-white border-[#cfe4dc] text-[#0f6d58]'
+                  : 'bg-[#1c1c1c] border-white/20 text-white'
+              }`}
+            />
+            <div className={`mt-3 rounded-lg border px-4 py-3 text-sm font-['Nunito'] ${isLight ? 'border-[#d8e9e2] bg-[#f8fcfa] text-[#4b7c70]' : 'border-white/10 bg-[#1c1c1c] text-white/70'}`}>
+              <div>
+                <span className="font-semibold">Cobrado em:</span> {getReferencePreview(referenceDate).cobradoEm || '---'}
+              </div>
+              <div className="mt-1">
+                <span className="font-semibold">Referente à:</span> {getReferencePreview(referenceDate).referenteA || '---'}
+              </div>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowReferenceModal(false)}
+              className={isLight ? 'border-[#cfe4dc] bg-transparent text-[#0f6d58]' : 'border-white/15 bg-transparent text-white/80'}
+            >
+              Cancelar
+            </Button>
+            <Button onClick={handleCreateReference} disabled={savingReference} className="bg-[#017158] hover:bg-[#01a07e] text-white">
+              {savingReference ? 'Criando...' : 'Criar referência'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showPendingMessageModal} onOpenChange={setShowPendingMessageModal}>
+        <DialogContent className={`${isLight ? 'bg-white border-[#cfe4dc]' : 'bg-[#2b2b2b] border-white/10'} text-white max-w-2xl`}>
+          <DialogHeader>
+            <DialogTitle className="font-['Nunito']">Pré-visualização da mensagem de cobrança</DialogTitle>
+            <DialogDescription className={isLight ? 'text-[#4b7c70]' : 'text-white/60'}>
+              Revise a mensagem antes de copiar para a área de transferência.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className={`rounded-lg border p-4 max-h-96 overflow-y-auto whitespace-pre-wrap font-mono text-sm leading-relaxed ${
+            isLight
+              ? 'bg-[#f8fcfa] border-[#d8e9e2] text-[#0f6d58]'
+              : 'bg-[#1c1c1c] border-white/20 text-white/80'
+          }`}>
+            {pendingMessageContent}
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowPendingMessageModal(false)}
+              className={isLight ? 'border-[#cfe4dc] bg-transparent text-[#0f6d58]' : 'border-white/15 bg-transparent text-white/80'}
+            >
+              Fechar
+            </Button>
+            <Button onClick={handleCopyPendingMessage} className="bg-[#017158] hover:bg-[#01a07e] text-white">
+              <span className="material-icons mr-2 text-[18px]">content_copy</span>
+              Copiar mensagem
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </ICRLayout>
   );
 }

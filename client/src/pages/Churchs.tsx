@@ -4,21 +4,25 @@ import CRUDTable, { Column } from '../components/CRUDTable';
 import SmartSelect from '../components/SmartSelect';
 import MultiSmartSelect from '../components/MultiSmartSelect';
 import { useICRAuth } from '../contexts/ICRAuthContext';
-import { getScopeLevel } from '../lib/scope-access';
+import { getScopeLevel, resolveScopeRestrictions } from '../lib/scope-access';
 import { useICRApi, Cell, Church, Federation, Minister } from '../hooks/useICRApi';
 import { settledValue } from '@/lib/utils';
 import { useViaCEP } from '../hooks/useViaCEP';
+import { countrySelectItems, DEFAULT_COUNTRY_CODE, formatPostalCode, normalizePostalCode } from '../lib/country';
 import { toast } from 'sonner';
 
 interface IgrejaForm {
   name: string;
   federationId: number | '';
   ministerId: number | '';
-  zipCode: string;
+  countryCode: string;
+  postalCode: string;
   street: string;
   number: string;
+  complement: string;
   city: string;
   state: string;
+  countyOrRegion: string;
 }
 
 export default function Igrejas() {
@@ -32,7 +36,7 @@ export default function Igrejas() {
   const [editItem, setEditItem] = useState<Church | null>(null);
   const [form, setForm] = useState<IgrejaForm>({
     name: '', federationId: '', ministerId: '',
-    zipCode: '', street: '', number: '', city: '', state: '',
+    countryCode: DEFAULT_COUNTRY_CODE, postalCode: '', street: '', number: '', complement: '', city: '', state: '', countyOrRegion: '',
   });
   const [saving, setSaving] = useState(false);
   const [federations, setFederations] = useState<Federation[]>([]);
@@ -42,14 +46,41 @@ export default function Igrejas() {
   const [selectedFederationIds, setSelectedFederationIds] = useState<number[]>([]);
   const scopeLevel = getScopeLevel(user?.scope, user?.username);
   const isFederatedScope = scopeLevel === 'federated';
+  const isLocalScope = scopeLevel === 'local';
+
+  const restrictions = useMemo(
+    () => resolveScopeRestrictions({
+      scopeLevel,
+      userMemberId: user?.memberId,
+      userFamilyId: user?.familyId,
+      userChurchId: user?.churchId,
+      userFederationId: user?.federationId,
+      churches: data,
+      federations,
+      members: [],
+      families: [],
+      ministers,
+    }),
+    [data, federations, ministers, scopeLevel, user?.churchId, user?.familyId, user?.federationId, user?.memberId],
+  );
 
   const load = async () => {
     setIsLoading(true);
     setError(null);
     try {
+      const churchesRequest = isLocalScope && typeof user?.churchId === 'number'
+        ? fetchApi<Church>(`/api/churches/${user.churchId}`).then((church) => [church]).catch(() => [])
+        : isFederatedScope && typeof user?.federationId === 'number'
+          ? fetchApi<Church[]>(`/api/churches/federation/${user.federationId}`)
+          : fetchApi<Church[]>('/api/churches');
+
+      const federationsRequest = isLocalScope
+        ? Promise.resolve<Federation[]>([])
+        : fetchApi<Federation[]>('/api/federations');
+
       const [churchesResult, federationsResult, ministersResult, cellsResult] = await Promise.allSettled([
-        fetchApi<Church[]>('/api/churches'),
-        fetchApi<Federation[]>('/api/federations'),
+        churchesRequest,
+        federationsRequest,
         fetchApi<Minister[]>('/api/ministers'),
         fetchApi<Cell[]>('/api/cells'),
       ]);
@@ -69,11 +100,13 @@ export default function Igrejas() {
     }
   };
 
-  const handleCEPChange = async (value: string) => {
-    setForm(prev => ({ ...prev, zipCode: value }));
+  const handlePostalCodeChange = async (value: string) => {
+    const normalizedPostalCode = normalizePostalCode(form.countryCode, value);
+    setForm(prev => ({ ...prev, postalCode: normalizedPostalCode }));
     
-    // Autocomplete quando atingir 8 dígitos
-    const cleanCEP = value.replace(/\D/g, '');
+    if (form.countryCode !== 'BR') return;
+
+    const cleanCEP = normalizedPostalCode;
     if (cleanCEP.length === 8) {
       const cepData = await fetchCEP(value);
       if (cepData) {
@@ -82,7 +115,6 @@ export default function Igrejas() {
           street: cepData.street,
           city: cepData.city,
           state: cepData.state,
-          // Mantém o número como estava
         }));
         toast.success('Endereço preenchido automaticamente');
       }
@@ -93,7 +125,7 @@ export default function Igrejas() {
 
   const openAdd = () => {
     setEditItem(null);
-    setForm({ name: '', federationId: '', ministerId: '', zipCode: '', street: '', number: '', city: '', state: '' });
+    setForm({ name: '', federationId: '', ministerId: '', countryCode: DEFAULT_COUNTRY_CODE, postalCode: '', street: '', number: '', complement: '', city: '', state: '', countyOrRegion: '' });
     setShowModal(true);
   };
 
@@ -103,11 +135,14 @@ export default function Igrejas() {
       name: item.name,
       federationId: item.federationId || '',
       ministerId: item.ministerId || '',
-      zipCode: item.address?.zipCode || '',
+      countryCode: item.address?.countryCode || DEFAULT_COUNTRY_CODE,
+      postalCode: item.address?.postalCode || '',
       street: item.address?.street || '',
       number: item.address?.number || '',
+      complement: item.address?.complement || '',
       city: item.address?.city || '',
       state: item.address?.state || '',
+      countyOrRegion: item.address?.countyOrRegion || '',
     });
     setShowModal(true);
   };
@@ -118,9 +153,9 @@ const handleSave = async () => {
   if (!form.federationId) { toast.error('Area é obrigatória'); return; }
 
   // 2. Limpeza do CEP (Remove hífens e pontos) para evitar o erro de 8 dígitos do Backend
-  const cleanZipCode = form.zipCode.replace(/\D/g, '');
-  
-  if (cleanZipCode.length > 0 && cleanZipCode.length !== 8) {
+  const normalizedPostalCode = normalizePostalCode(form.countryCode, form.postalCode);
+
+  if (form.countryCode === 'BR' && normalizedPostalCode.length > 0 && normalizedPostalCode.length !== 8) {
     toast.error('O CEP deve conter exatamente 8 números');
     return;
   }
@@ -133,11 +168,14 @@ const handleSave = async () => {
       federationId: Number(form.federationId),
       ministerId: form.ministerId ? Number(form.ministerId) : 0,
       address: {
-        zipCode: cleanZipCode,
+        countryCode: form.countryCode,
+        postalCode: normalizedPostalCode,
         street: form.street,
         number: form.number,
+        complement: form.complement,
         city: form.city,
-        state: form.state
+        state: form.state,
+        countyOrRegion: form.countyOrRegion,
       }
     }; 
 
@@ -238,13 +276,19 @@ const handleSave = async () => {
     [federations],
   );
 
+  const scopedChurches = useMemo(() => {
+    if (scopeLevel === 'federation') return data;
+    const allowedChurchIds = new Set(restrictions.allowedChurchIds);
+    return data.filter((church) => allowedChurchIds.has(church.id));
+  }, [data, restrictions.allowedChurchIds, scopeLevel]);
+
   const filteredData = useMemo(() => {
     if (selectedFederationIds.length === 0) return data;
 
-    return data.filter((church) =>
+    return scopedChurches.filter((church) =>
       typeof church.federationId === 'number' && selectedFederationIds.includes(church.federationId),
     );
-  }, [data, selectedFederationIds]);
+  }, [data, scopedChurches, selectedFederationIds]);
 
   const lockedFederationId = useMemo(() => {
     if (!isFederatedScope) return undefined;
@@ -331,11 +375,24 @@ const handleSave = async () => {
                     placeholder="Nome da igreja" />
                 </div>
                 <SmartSelect
+                  className="col-span-2"
+                  label="País"
+                  selectedId={form.countryCode}
+                  defaultSelectedId={DEFAULT_COUNTRY_CODE}
+                  onSelect={(id) => {
+                    const countryCode = typeof id === 'string' ? id : DEFAULT_COUNTRY_CODE;
+                    setForm((prev) => ({ ...prev, countryCode, postalCode: '' }));
+                  }}
+                  items={countrySelectItems}
+                  placeholder="Selecione um país"
+                  required
+                />
+                <SmartSelect
                   label="Area"
                   selectedId={form.federationId}
                   onSelect={(id) => {
                     if (isFederatedScope) return;
-                    setF('federationId', id);
+                    setF('federationId', typeof id === 'number' ? id : '');
                   }}
                   items={isFederatedScope && lockedFederationId
                     ? federations.filter((f) => f.id === lockedFederationId).map((f) => ({ id: f.id, name: f.name }))
@@ -347,7 +404,7 @@ const handleSave = async () => {
                 <SmartSelect
                   label="Ministro"
                   selectedId={form.ministerId}
-                  onSelect={(id) => setF('ministerId', id)}
+                  onSelect={(id) => setF('ministerId', typeof id === 'number' ? id : '')}
                   items={ministers.map((m) => ({ id: m.id, name: m.memberName || m.id.toString() }))}
                   placeholder="Selecione um ministro"
                 />
@@ -357,16 +414,16 @@ const handleSave = async () => {
                 <p className="text-white/50 text-xs font-['Nunito'] mb-3 uppercase tracking-wider">Endereço</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-white/70 text-sm font-['Nunito'] block mb-1">CEP {cepLoading && <span className="text-[#017158] text-xs">buscando...</span>}</label>
+                    <label className="text-white/70 text-sm font-['Nunito'] block mb-1">{form.countryCode === 'BR' ? 'CEP' : 'Código postal'} {form.countryCode === 'BR' && cepLoading && <span className="text-[#017158] text-xs">buscando...</span>}</label>
                     <input 
                       type="text" 
-                      value={form.zipCode} 
-                      onChange={e => handleCEPChange(e.target.value)}
-                      disabled={cepLoading}
+                      value={formatPostalCode(form.countryCode, form.postalCode)} 
+                      onChange={e => handlePostalCodeChange(e.target.value)}
+                      disabled={form.countryCode === 'BR' && cepLoading}
                       className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                      placeholder="00000-000" 
+                      placeholder={form.countryCode === 'BR' ? '00000-000' : 'Informe o código postal'} 
                     />
-                    {cepError && <p className="text-red-400 text-xs mt-1">{cepError}</p>}
+                    {form.countryCode === 'BR' && cepError && <p className="text-red-400 text-xs mt-1">{cepError}</p>}
                   </div>
                   <div>
                     <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Número</label>
@@ -380,6 +437,12 @@ const handleSave = async () => {
                       className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                       placeholder="Nome da rua" />
                   </div>
+                  <div className="col-span-2">
+                    <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Complemento</label>
+                    <input type="text" value={form.complement} onChange={e => setF('complement', e.target.value)}
+                      className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
+                      placeholder="Apto, bloco, referência" />
+                  </div>
                   <div>
                     <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Cidade</label>
                     <input type="text" value={form.city} onChange={e => setF('city', e.target.value)}
@@ -391,6 +454,12 @@ const handleSave = async () => {
                     <input type="text" value={form.state} onChange={e => setF('state', e.target.value)}
                       className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                       placeholder="UF" maxLength={2} />
+                  </div>
+                  <div>
+                    <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Região/Condado</label>
+                    <input type="text" value={form.countyOrRegion} onChange={e => setF('countyOrRegion', e.target.value)}
+                      className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
+                      placeholder="Condado, província, região" />
                   </div>
                 </div>
               </div>

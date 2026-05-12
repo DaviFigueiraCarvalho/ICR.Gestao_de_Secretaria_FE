@@ -6,6 +6,7 @@ import MultiSmartSelect from '../components/MultiSmartSelect';
 import { useICRAuth } from '../contexts/ICRAuthContext';
 import { buildLocalChurchFallback, getScopeLevel, resolveScopeRestrictions } from '../lib/scope-access';
 import { useICRApi, Family, Church, Cell, Federation, Member, Minister } from '../hooks/useICRApi';
+import { countrySelectItems, DEFAULT_COUNTRY_CODE, formatPhoneNumber, normalizePhoneNumber } from '../lib/country';
 import { settledValue } from '@/lib/utils';
 import {
   GENDER_FEMALE,
@@ -30,6 +31,7 @@ interface FamilyMemberDraft {
   enabled: boolean;
   name: string;
   birthDate: string;
+  phoneCountryCode: string;
   cellPhone: string;
   role: number | '';
 }
@@ -64,6 +66,7 @@ const createEmptyFamilyMemberDraft = (enabled = true): FamilyMemberDraft => ({
   enabled,
   name: '',
   birthDate: '',
+  phoneCountryCode: DEFAULT_COUNTRY_CODE,
   cellPhone: '',
   role: 0,
 });
@@ -122,6 +125,19 @@ export default function Familias() {
     const digits = normalizeCEP(value);
     if (digits.length <= 5) return digits;
     return `${digits.slice(0, 5)}-${digits.slice(5)}`;
+  };
+
+  const getPreferredCellIdForChurch = (churchId: number | ''): number | '' => {
+    if (!churchId) return '';
+
+    const churchCells = cells.filter((cell) => cell.churchId === churchId);
+    if (churchCells.length === 0) return '';
+
+    const matrixCell = churchCells.find(
+      (cell) => String(cell.type ?? '').trim().toLowerCase() === 'matriz',
+    );
+
+    return matrixCell?.id ?? churchCells[0].id;
   };
 
   const handleManMinisterCEPChange = async (value: string) => {
@@ -259,11 +275,12 @@ export default function Familias() {
   useEffect(() => { load(); }, [page, pageSize, serverPaginationEnabled]);
 
   const openAdd = () => {
+    const initialChurchId = isLocalScope ? restrictions.lockedChurchId || '' : '';
     setEditItem(null);
     setForm({
       name: '',
-      churchId: isLocalScope ? restrictions.lockedChurchId || '' : '',
-      cellId: '',
+      churchId: initialChurchId,
+      cellId: getPreferredCellIdForChurch(initialChurchId),
       manId: '',
       womanId: '',
       weddingDate: '',
@@ -286,14 +303,10 @@ export default function Familias() {
       return;
     }
 
-    const matrixCell = cells.find(
-      c => c.churchId === churchId && String(c.type ?? '').trim().toLowerCase() === 'matriz'
-    );
-
     setForm(prev => ({
       ...prev,
       churchId,
-      cellId: matrixCell?.id ?? '',
+      cellId: getPreferredCellIdForChurch(churchId),
     }));
   };
 
@@ -347,12 +360,28 @@ export default function Familias() {
 
     if (isLocalScope && typeof restrictions.lockedChurchId === 'number') {
       setSelectedChurchIds([restrictions.lockedChurchId]);
-      setForm((prev) => ({ ...prev, churchId: prev.churchId || restrictions.lockedChurchId || '' }));
+      setForm((prev) => {
+        const churchId = prev.churchId || restrictions.lockedChurchId || '';
+        return {
+          ...prev,
+          churchId,
+          cellId: prev.cellId || getPreferredCellIdForChurch(churchId),
+        };
+      });
     }
   }, [isFederatedScope, isLocalScope, restrictions.lockedChurchId, restrictions.lockedFederationId]);
 
   // Filtra células apenas da igreja selecionada
   const availableCells = form.churchId ? scopedCells.filter(c => c.churchId === form.churchId) : scopedCells;
+
+  useEffect(() => {
+    if (!form.churchId || form.cellId) return;
+
+    const preferredCellId = getPreferredCellIdForChurch(form.churchId);
+    if (preferredCellId) {
+      setForm((prev) => ({ ...prev, cellId: preferredCellId }));
+    }
+  }, [form.cellId, form.churchId, scopedCells]);
 
   const openEdit = (item: Family) => {
     setEditItem(item);
@@ -381,7 +410,12 @@ export default function Familias() {
         gender,
         hasBeenMarried: true,
         birthDate: draft.birthDate || undefined,
-        cellPhone: draft.cellPhone || undefined,
+        cellPhone: draft.cellPhone
+          ? {
+              countryCode: draft.phoneCountryCode,
+              number: draft.cellPhone,
+            }
+          : undefined,
         role: Number(draft.role || 0),
       }),
     });
@@ -671,8 +705,8 @@ export default function Familias() {
                         Ativar
                       </label>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 opacity-100">
-                      <div>
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3 opacity-100">
+                      <div className="md:col-span-5">
                         <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Nome do marido *</label>
                         <input
                           type="text"
@@ -683,18 +717,27 @@ export default function Familias() {
                           placeholder="Nome do marido"
                         />
                       </div>
-                      <div>
+                      <SmartSelect
+                        className="md:col-span-2"
+                        label="País do telefone"
+                        selectedId={manDraft.phoneCountryCode}
+                        onSelect={(id) => setManDraft((prev) => ({ ...prev, phoneCountryCode: typeof id === 'string' ? id : DEFAULT_COUNTRY_CODE }))}
+                        items={countrySelectItems}
+                        placeholder="Selecione um país"
+                        disabled={!createManMember}
+                      />
+                      <div className="md:col-span-5">
                         <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Telefone</label>
                         <input
                           type="text"
-                          value={manDraft.cellPhone}
-                          onChange={(event) => setManDraft((prev) => ({ ...prev, cellPhone: event.target.value }))}
+                          value={formatPhoneNumber(manDraft.phoneCountryCode, manDraft.cellPhone)}
+                          onChange={(event) => setManDraft((prev) => ({ ...prev, cellPhone: normalizePhoneNumber(prev.phoneCountryCode, event.target.value) }))}
                           disabled={!createManMember}
                           className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
                           placeholder="Opcional"
                         />
                       </div>
-                      <div>
+                      <div className="md:col-span-6">
                         <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Nascimento</label>
                         <input
                           type="date"
@@ -704,7 +747,7 @@ export default function Familias() {
                           className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
                         />
                       </div>
-                      <div>
+                      <div className="md:col-span-6">
                         <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Função / Cargo</label>
                         <select
                           value={manDraft.role}
@@ -865,8 +908,8 @@ export default function Familias() {
                         Ativar
                       </label>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                      <div className="md:col-span-5">
                         <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Nome da mulher *</label>
                         <input
                           type="text"
@@ -877,18 +920,27 @@ export default function Familias() {
                           placeholder="Nome da mulher"
                         />
                       </div>
-                      <div>
+                      <SmartSelect
+                        className="md:col-span-2"
+                        label="País do telefone"
+                        selectedId={womanDraft.phoneCountryCode}
+                        onSelect={(id) => setWomanDraft((prev) => ({ ...prev, phoneCountryCode: typeof id === 'string' ? id : DEFAULT_COUNTRY_CODE }))}
+                        items={countrySelectItems}
+                        placeholder="Selecione um país"
+                        disabled={!createWomanMember}
+                      />
+                      <div className="md:col-span-5">
                         <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Telefone</label>
                         <input
                           type="text"
-                          value={womanDraft.cellPhone}
-                          onChange={(event) => setWomanDraft((prev) => ({ ...prev, cellPhone: event.target.value }))}
+                          value={formatPhoneNumber(womanDraft.phoneCountryCode, womanDraft.cellPhone)}
+                          onChange={(event) => setWomanDraft((prev) => ({ ...prev, cellPhone: normalizePhoneNumber(prev.phoneCountryCode, event.target.value) }))}
                           disabled={!createWomanMember}
                           className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
                           placeholder="Opcional"
                         />
                       </div>
-                      <div>
+                      <div className="md:col-span-6">
                         <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Nascimento</label>
                         <input
                           type="date"
@@ -898,7 +950,7 @@ export default function Familias() {
                           className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
                         />
                       </div>
-                      <div>
+                      <div className="md:col-span-6">
                         <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Função / Cargo</label>
                         <select
                           value={womanDraft.role}

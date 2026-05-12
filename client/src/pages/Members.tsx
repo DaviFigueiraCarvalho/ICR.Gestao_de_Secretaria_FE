@@ -8,6 +8,7 @@ import { buildLocalChurchFallback, getScopeLevel, resolveScopeRestrictions } fro
 import { useICRApi, Member, Family, Church, Cell, Federation, Minister } from '../hooks/useICRApi';
 import { settledValue } from '@/lib/utils';
 import { useViaCEP } from '../hooks/useViaCEP';
+import { countrySelectItems, DEFAULT_COUNTRY_CODE, formatPhoneNumber, formatPostalCode, normalizePhoneNumber, normalizePostalCode } from '../lib/country';
 import {
   GENDER_FEMALE,
   PASTOR_ROLE,
@@ -26,7 +27,8 @@ interface MembroForm {
   birthDate: string;
   hasBeenMarried: boolean;
   role: number | '';
-  cellPhone: string;
+  phoneCountryCode: string;
+  phoneNumber: string;
 }
 
 interface MinistroInlineForm {
@@ -35,22 +37,20 @@ interface MinistroInlineForm {
   cardValidity: string;
   presbiterOrdinationDate: string;
   ministerOrdinationDate: string;
-  zipCode: string;
+  countryCode: string;
+  postalCode: string;
   street: string;
   number: string;
+  complement: string;
   city: string;
   state: string;
+  countyOrRegion: string;
 }
 
-const normalizePhone = (value: string): string => value.replace(/\D/g, '').slice(0, 11);
 const normalizeCPF = (value: string): string => value.replace(/\D/g, '').slice(0, 11);
-const normalizeCEP = (value: string): string => value.replace(/\D/g, '').slice(0, 8);
-
-const formatPhone = (value: string): string => {
-  const digits = normalizePhone(value);
-  if (digits.length <= 2) return digits;
-  if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
-  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+const getPhoneDisplay = (phone?: Member['cellPhone']): string => {
+  if (!phone) return '-';
+  return phone.displayFormat || phone.internationalFormat || phone.number || '-';
 };
 
 const formatCPF = (value: string): string => {
@@ -59,12 +59,6 @@ const formatCPF = (value: string): string => {
   if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
   if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
   return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
-};
-
-const formatCEP = (value: string): string => {
-  const digits = normalizeCEP(value);
-  if (digits.length <= 5) return digits;
-  return `${digits.slice(0, 5)}-${digits.slice(5)}`;
 };
 
 const getGenderValue = (value: unknown): number => {
@@ -79,11 +73,14 @@ const EMPTY_MINISTER_FORM: MinistroInlineForm = {
   cardValidity: '',
   presbiterOrdinationDate: '',
   ministerOrdinationDate: '',
-  zipCode: '',
+  countryCode: DEFAULT_COUNTRY_CODE,
+  postalCode: '',
   street: '',
   number: '',
+  complement: '',
   city: '',
   state: '',
+  countyOrRegion: '',
 };
 
 export default function Membros() {
@@ -97,7 +94,7 @@ export default function Membros() {
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState<Member | null>(null);
   const [form, setForm] = useState<MembroForm>({
-    name: '', familyId: '', gender: 1, birthDate: '', hasBeenMarried: false, role: '', cellPhone: '',
+    name: '', familyId: '', gender: 1, birthDate: '', hasBeenMarried: false, role: '', phoneCountryCode: DEFAULT_COUNTRY_CODE, phoneNumber: '',
   });
   const [ministerForm, setMinisterForm] = useState<MinistroInlineForm>(EMPTY_MINISTER_FORM);
   const [saving, setSaving] = useState(false);
@@ -124,10 +121,12 @@ export default function Membros() {
     err instanceof Error && (err.message.includes('403') || err.message.toLowerCase().includes('forbidden'));
 
   const handleMinisterCEPChange = async (value: string) => {
-    const normalizedCEP = normalizeCEP(value);
-    setMinisterForm((prev) => ({ ...prev, zipCode: normalizedCEP }));
+    const normalizedPostalCode = normalizePostalCode(ministerForm.countryCode, value);
+    setMinisterForm((prev) => ({ ...prev, postalCode: normalizedPostalCode }));
 
-    const cleanCEP = normalizedCEP;
+    if (ministerForm.countryCode !== 'BR') return;
+
+    const cleanCEP = normalizedPostalCode;
     if (cleanCEP.length === 8) {
       const cepData = await fetchCEP(value);
       if (cepData) {
@@ -159,11 +158,14 @@ export default function Membros() {
       presbiterOrdinationDate: ministerForm.presbiterOrdinationDate || undefined,
       ministerOrdinationDate: ministerForm.ministerOrdinationDate || undefined,
       address: {
-        zipCode: ministerForm.zipCode || '',
+        countryCode: ministerForm.countryCode || DEFAULT_COUNTRY_CODE,
+        postalCode: ministerForm.postalCode || '',
         street: ministerForm.street || '',
         number: ministerForm.number || '',
+        complement: ministerForm.complement || '',
         city: ministerForm.city || '',
         state: ministerForm.state || '',
+        countyOrRegion: ministerForm.countyOrRegion || '',
       },
     };
 
@@ -274,7 +276,7 @@ export default function Membros() {
 
   const openAdd = () => {
     setEditItem(null);
-    setForm({ name: '', familyId: '', gender: 1, birthDate: '', hasBeenMarried: false, role: 0, cellPhone: '' });
+    setForm({ name: '', familyId: '', gender: 1, birthDate: '', hasBeenMarried: false, role: 0, phoneCountryCode: DEFAULT_COUNTRY_CODE, phoneNumber: '' });
     setMinisterForm(EMPTY_MINISTER_FORM);
     setShowModal(true);
   };
@@ -288,7 +290,8 @@ export default function Membros() {
       birthDate: item.birthDate ? item.birthDate.split('T')[0] : '',
       hasBeenMarried: item.hasBeenMarried || false,
       role: getMemberRoleValue(item.role) === '' ? 0 : getMemberRoleValue(item.role),
-      cellPhone: normalizePhone(item.cellPhone || ''),
+      phoneCountryCode: item.cellPhone?.countryCode || DEFAULT_COUNTRY_CODE,
+      phoneNumber: item.cellPhone?.number || '',
     });
     setMinisterForm(EMPTY_MINISTER_FORM);
     setShowModal(true);
@@ -302,8 +305,8 @@ export default function Membros() {
       return;
     }
 
-    const normalizedCellPhone = normalizePhone(form.cellPhone);
-    if (normalizedCellPhone && normalizedCellPhone.length !== 11) {
+    const normalizedCellPhone = normalizePhoneNumber(form.phoneCountryCode, form.phoneNumber);
+    if (form.phoneCountryCode === 'BR' && normalizedCellPhone && normalizedCellPhone.length !== 11) {
       toast.error('Telefone deve conter 11 dígitos (DDD + número)');
       return;
     }
@@ -314,13 +317,13 @@ export default function Membros() {
     }
 
     const normalizedMinisterCPF = normalizeCPF(ministerForm.cpf);
-    const normalizedMinisterCEP = normalizeCEP(ministerForm.zipCode);
+    const normalizedMinisterCEP = normalizePostalCode(ministerForm.countryCode, ministerForm.postalCode);
     if (shouldAutoCreateMinister(form.role)) {
       if (normalizedMinisterCPF && normalizedMinisterCPF.length !== 11) {
         toast.error('CPF do ministro deve conter 11 dígitos');
         return;
       }
-      if (normalizedMinisterCEP && normalizedMinisterCEP.length !== 8) {
+      if (ministerForm.countryCode === 'BR' && normalizedMinisterCEP && normalizedMinisterCEP.length !== 8) {
         toast.error('CEP do ministro deve conter 8 dígitos');
         return;
       }
@@ -336,7 +339,12 @@ export default function Membros() {
       if (form.familyId) body.familyId = Number(form.familyId);
       if (form.birthDate) body.birthDate = form.birthDate;
       body.role = Number(form.role);
-      if (normalizedCellPhone) body.cellPhone = normalizedCellPhone;
+      if (normalizedCellPhone) {
+        body.cellPhone = {
+          countryCode: form.phoneCountryCode,
+          number: normalizedCellPhone,
+        };
+      }
 
       let memberId = editItem?.id;
 
@@ -385,7 +393,7 @@ export default function Membros() {
     { key: 'familyName', label: 'Família', render: (item) => item.familyName || '-' },
     { key: 'familyChurchName', label: 'Igreja', render: (item) => item.familyChurchName || '-' },
     { key: 'birthDate', label: 'Nascimento', render: (item) => item.birthDate ? new Date(item.birthDate).toLocaleDateString('pt-BR') : '-' },
-    { key: 'cellPhone', label: 'Telefone', render: (item) => item.cellPhone || '-' },
+    { key: 'cellPhone', label: 'Telefone', render: (item) => getPhoneDisplay(item.cellPhone) },
   ];
 
   const setF = (key: keyof MembroForm, val: string | number | boolean) => setForm(prev => ({ ...prev, [key]: val }));
@@ -409,7 +417,7 @@ export default function Membros() {
           <div className="grid gap-3 sm:grid-cols-2">
             <InfoTile label="Função" value={getMemberRoleLabel(selectedMember.role, selectedMember.roleName)} />
             <InfoTile label="Gênero" value={selectedMember.genderName || (getGenderValue(selectedMember.gender) === 1 ? 'Masculino' : 'Feminino')} />
-            <InfoTile label="Telefone" value={selectedMember.cellPhone || '-'} />
+            <InfoTile label="Telefone" value={getPhoneDisplay(selectedMember.cellPhone)} />
             <InfoTile label="Nascimento" value={selectedMember.birthDate ? new Date(selectedMember.birthDate).toLocaleDateString('pt-BR') : '-'} />
             <InfoTile label="Família" value={selectedMember.familyName || '-'} />
             <InfoTile label="Igreja" value={selectedMember.familyChurchName || '-'} />
@@ -624,31 +632,40 @@ export default function Membros() {
                   placeholder="Nome completo" />
               </div>
               <div className="grid gap-3">
-                <div>
-                  <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Gênero</label>
-                  <select value={form.gender} onChange={e => handleGenderChange(Number(e.target.value))}
-                    className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]">
-                    <option value={1}>Masculino</option>
-                    <option value={2}>Feminino</option>
-                  </select>
-                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Gênero</label>
+                    <select value={form.gender} onChange={e => handleGenderChange(Number(e.target.value))}
+                      className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]">
+                      <option value={1}>Masculino</option>
+                      <option value={2}>Feminino</option>
+                    </select>
+                  </div>
                   <div>
                     <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Data de Nascimento</label>
                     <input type="date" max={todayDate} value={form.birthDate} onChange={e => setF('birthDate', e.target.value)}
                       className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]" />
                   </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <SmartSelect
+                    label="País do Telefone"
+                    selectedId={form.phoneCountryCode}
+                    onSelect={(id) => setF('phoneCountryCode', typeof id === 'string' ? id : DEFAULT_COUNTRY_CODE)}
+                    items={countrySelectItems}
+                    placeholder="Selecione um país"
+                  />
                   <div>
                     <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Telefone</label>
                     <input
                       type="text"
-                      inputMode="numeric"
-                      pattern="[0-9]*"
-                      maxLength={15}
-                      value={formatPhone(form.cellPhone)}
-                      onChange={e => setF('cellPhone', normalizePhone(e.target.value))}
+                      inputMode={form.phoneCountryCode === 'BR' ? 'numeric' : 'text'}
+                      pattern={form.phoneCountryCode === 'BR' ? '[0-9]*' : undefined}
+                      maxLength={form.phoneCountryCode === 'BR' ? 15 : 24}
+                      value={formatPhoneNumber(form.phoneCountryCode, form.phoneNumber)}
+                      onChange={e => setF('phoneNumber', normalizePhoneNumber(form.phoneCountryCode, e.target.value))}
                       className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                      placeholder="(21) 90000-0000"
+                      placeholder={form.phoneCountryCode === 'BR' ? '(21) 90000-0000' : 'Telefone internacional'}
                     />
                   </div>
                 </div>
@@ -736,20 +753,31 @@ export default function Membros() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
+                    <SmartSelect
+                      className="col-span-2"
+                      label="País"
+                      selectedId={ministerForm.countryCode}
+                      onSelect={(id) => {
+                        const countryCode = typeof id === 'string' ? id : DEFAULT_COUNTRY_CODE;
+                        setMinisterForm((prev) => ({ ...prev, countryCode, postalCode: '' }));
+                      }}
+                      items={countrySelectItems}
+                      placeholder="Selecione um país"
+                    />
                     <div>
-                      <label className="text-white/70 text-sm font-['Nunito'] block mb-1">CEP {ministerCepLoading && <span className="text-[#017158] text-xs">buscando...</span>}</label>
+                      <label className="text-white/70 text-sm font-['Nunito'] block mb-1">{ministerForm.countryCode === 'BR' ? 'CEP' : 'Código postal'} {ministerForm.countryCode === 'BR' && ministerCepLoading && <span className="text-[#017158] text-xs">buscando...</span>}</label>
                       <input
                         type="text"
-                        value={formatCEP(ministerForm.zipCode)}
+                        value={formatPostalCode(ministerForm.countryCode, ministerForm.postalCode)}
                         onChange={(e) => handleMinisterCEPChange(e.target.value)}
-                        inputMode="numeric"
-                        pattern="[0-9]*"
-                        maxLength={9}
-                        disabled={ministerCepLoading}
+                        inputMode={ministerForm.countryCode === 'BR' ? 'numeric' : 'text'}
+                        pattern={ministerForm.countryCode === 'BR' ? '[0-9]*' : undefined}
+                        maxLength={ministerForm.countryCode === 'BR' ? 9 : 24}
+                        disabled={ministerForm.countryCode === 'BR' && ministerCepLoading}
                         className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                        placeholder="00000-000"
+                        placeholder={ministerForm.countryCode === 'BR' ? '00000-000' : 'Informe o código postal'}
                       />
-                      {ministerCepError && <p className="text-red-400 text-xs mt-1">{ministerCepError}</p>}
+                      {ministerForm.countryCode === 'BR' && ministerCepError && <p className="text-red-400 text-xs mt-1">{ministerCepError}</p>}
                     </div>
                     <div>
                       <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Número</label>
@@ -771,6 +799,16 @@ export default function Membros() {
                         placeholder="Nome da rua"
                       />
                     </div>
+                    <div className="col-span-2">
+                      <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Complemento</label>
+                      <input
+                        type="text"
+                        value={ministerForm.complement}
+                        onChange={(e) => setMinisterF('complement', e.target.value)}
+                        className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
+                        placeholder="Apto, bloco, referência"
+                      />
+                    </div>
                     <div>
                       <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Cidade</label>
                       <input
@@ -790,6 +828,16 @@ export default function Membros() {
                         className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                         placeholder="UF"
                         maxLength={2}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Região/Condado</label>
+                      <input
+                        type="text"
+                        value={ministerForm.countyOrRegion}
+                        onChange={(e) => setMinisterF('countyOrRegion', e.target.value)}
+                        className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
+                        placeholder="Condado, província, região"
                       />
                     </div>
                   </div>

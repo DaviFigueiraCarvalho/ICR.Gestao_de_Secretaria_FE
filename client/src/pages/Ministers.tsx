@@ -7,6 +7,7 @@ import { settledValue } from '@/lib/utils';
 import { useViaCEP } from '../hooks/useViaCEP';
 import { PRESBITERO_ROLE, getMemberRoleValue } from '../lib/member-roles';
 import { useLocation } from 'wouter';
+import { countrySelectItems, DEFAULT_COUNTRY_CODE, formatPostalCode, normalizePostalCode } from '../lib/country';
 import { toast } from 'sonner';
 import { getMinisterCoverageBadgeClass, getMinisterCoverageLabel, resolveMinisterCoverageStatus, summarizeMinisterCoverage } from '../lib/minister-coverage';
 import { useMemo } from 'react';
@@ -18,15 +19,21 @@ interface MinistroForm {
   cardValidity: string;
   presbiterOrdinationDate: string;
   ministerOrdinationDate: string;
-  zipCode: string;
+  countryCode: string;
+  postalCode: string;
   street: string;
   number: string;
+  complement: string;
   city: string;
   state: string;
+  countyOrRegion: string;
 }
 
 const normalizeCPF = (value: string): string => value.replace(/\D/g, '').slice(0, 11);
-const normalizeCEP = (value: string): string => value.replace(/\D/g, '').slice(0, 8);
+const getPhoneDisplay = (phone?: Minister['memberPhone'] | Member['cellPhone']): string => {
+  if (!phone) return '-';
+  return phone.displayFormat || phone.internationalFormat || phone.number || '-';
+};
 
 const formatCPF = (value: string): string => {
   const digits = normalizeCPF(value);
@@ -34,12 +41,6 @@ const formatCPF = (value: string): string => {
   if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
   if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
   return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
-};
-
-const formatCEP = (value: string): string => {
-  const digits = normalizeCEP(value);
-  if (digits.length <= 5) return digits;
-  return `${digits.slice(0, 5)}-${digits.slice(5)}`;
 };
 
 export default function Ministros() {
@@ -55,7 +56,7 @@ export default function Ministros() {
   const [form, setForm] = useState<MinistroForm>({
     memberId: '', cpf: '', email: '', cardValidity: '',
     presbiterOrdinationDate: '', ministerOrdinationDate: '',
-    zipCode: '', street: '', number: '', city: '', state: '',
+    countryCode: DEFAULT_COUNTRY_CODE, postalCode: '', street: '', number: '', complement: '', city: '', state: '', countyOrRegion: '',
   });
   const [saving, setSaving] = useState(false);
   const [members, setMembers] = useState<Member[]>([]);
@@ -88,12 +89,13 @@ export default function Ministros() {
     }
   };
 
-  const handleCEPChange = async (value: string) => {
-    const normalizedCEP = normalizeCEP(value);
-    setForm(prev => ({ ...prev, zipCode: normalizedCEP }));
+  const handlePostalCodeChange = async (value: string) => {
+    const normalizedPostalCode = normalizePostalCode(form.countryCode, value);
+    setForm(prev => ({ ...prev, postalCode: normalizedPostalCode }));
     
-    // Autocomplete quando atingir 8 dígitos
-    const cleanCEP = normalizedCEP;
+    if (form.countryCode !== 'BR') return;
+
+    const cleanCEP = normalizedPostalCode;
     if (cleanCEP.length === 8) {
       const cepData = await fetchCEP(value);
       if (cepData) {
@@ -155,7 +157,7 @@ export default function Ministros() {
 
   const openAdd = (memberId?: number) => {
     setEditItem(null);
-    setForm({ memberId: memberId ?? '', cpf: '', email: '', cardValidity: '', presbiterOrdinationDate: '', ministerOrdinationDate: '', zipCode: '', street: '', number: '', city: '', state: '' });
+    setForm({ memberId: memberId ?? '', cpf: '', email: '', cardValidity: '', presbiterOrdinationDate: '', ministerOrdinationDate: '', countryCode: DEFAULT_COUNTRY_CODE, postalCode: '', street: '', number: '', complement: '', city: '', state: '', countyOrRegion: '' });
     setShowModal(true);
   };
 
@@ -168,11 +170,14 @@ export default function Ministros() {
       cardValidity: item.cardValidity ? item.cardValidity.split('T')[0] : '',
       presbiterOrdinationDate: item.presbiterOrdinationDate ? item.presbiterOrdinationDate.split('T')[0] : '',
       ministerOrdinationDate: item.ministerOrdinationDate ? item.ministerOrdinationDate.split('T')[0] : '',
-      zipCode: item.address?.zipCode || '',
+      countryCode: item.address?.countryCode || DEFAULT_COUNTRY_CODE,
+      postalCode: item.address?.postalCode || '',
       street: item.address?.street || '',
       number: item.address?.number || '',
+      complement: item.address?.complement || '',
       city: item.address?.city || '',
       state: item.address?.state || '',
+      countyOrRegion: item.address?.countyOrRegion || '',
     });
     setShowModal(true);
   };
@@ -180,12 +185,12 @@ export default function Ministros() {
   const handleSave = async () => {
     if (!form.memberId) { toast.error('ID do membro é obrigatório'); return; }
     const normalizedCpf = normalizeCPF(form.cpf);
-    const normalizedZipCode = normalizeCEP(form.zipCode);
+    const normalizedPostalCode = normalizePostalCode(form.countryCode, form.postalCode);
     if (normalizedCpf && normalizedCpf.length !== 11) {
       toast.error('CPF deve conter 11 dígitos');
       return;
     }
-    if (normalizedZipCode && normalizedZipCode.length !== 8) {
+    if (form.countryCode === 'BR' && normalizedPostalCode && normalizedPostalCode.length !== 8) {
       toast.error('CEP deve conter 8 dígitos');
       return;
     }
@@ -199,11 +204,14 @@ export default function Ministros() {
         presbiterOrdinationDate: form.presbiterOrdinationDate || undefined,
         ministerOrdinationDate: form.ministerOrdinationDate || undefined,
         address: {
-          zipCode: normalizedZipCode,
+          countryCode: form.countryCode,
+          postalCode: normalizedPostalCode,
           street: form.street,
           number: form.number,
+          complement: form.complement,
           city: form.city,
           state: form.state,
+          countyOrRegion: form.countyOrRegion,
         },
       };
       if (editItem) {
@@ -230,7 +238,7 @@ export default function Ministros() {
   const columns: Column<Minister>[] = [
     { key: 'id', label: 'ID' },
     { key: 'memberName', label: 'Nome', render: (item) => item.memberName || '-' },
-    { key: 'phone', label: 'Telefone', render: (item) => item.memberPhone || item.member?.cellPhone || '-' },
+    { key: 'phone', label: 'Telefone', render: (item) => getPhoneDisplay(item.memberPhone || item.member?.cellPhone) },
     { key: 'email', label: 'E-mail', render: (item) => item.email || '-' },
     { key: 'memberBirthday', label: 'Nascimento', render: (item) => item.memberBirthday ? new Date(item.memberBirthday).toLocaleDateString('pt-BR') : '-' },
     { key: 'memberWeddingDate', label: 'Casamento', render: (item) => item.memberWeddingDate ? new Date(item.memberWeddingDate).toLocaleDateString('pt-BR') : '-' },
@@ -307,7 +315,7 @@ export default function Ministros() {
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <InfoTile label="Telefone" value={selectedMinister.memberPhone || selectedMinister.member?.cellPhone || '-'} />
+              <InfoTile label="Telefone" value={getPhoneDisplay(selectedMinister.memberPhone || selectedMinister.member?.cellPhone)} />
               <InfoTile label="E-mail" value={selectedMinister.email || '-'} />
               <InfoTile label="Nascimento" value={selectedMinister.memberBirthday ? new Date(selectedMinister.memberBirthday).toLocaleDateString('pt-BR') : '-'} />
               <InfoTile label="Casamento" value={selectedMinister.memberWeddingDate ? new Date(selectedMinister.memberWeddingDate).toLocaleDateString('pt-BR') : '-'} />
@@ -321,8 +329,8 @@ export default function Ministros() {
             <InfoTile label="Federação" value={selectedMinister.federationMemberName || '-'} compact />
             <InfoTile label="Ordenação Presbítero" value={selectedMinister.presbiterOrdinationDate ? new Date(selectedMinister.presbiterOrdinationDate).toLocaleDateString('pt-BR') : '-'} compact />
             <InfoTile label="Ordenação a Pastor" value={selectedMinister.ministerOrdinationDate ? new Date(selectedMinister.ministerOrdinationDate).toLocaleDateString('pt-BR') : '-'} compact />
-            <InfoTile label="Endereço" value={selectedMinister.address ? [selectedMinister.address.street, selectedMinister.address.number, selectedMinister.address.city, selectedMinister.address.state].filter(Boolean).join(', ') : '-'} compact />
-            <InfoTile label="CEP" value={selectedMinister.address?.zipCode || '-'} compact />
+            <InfoTile label="Endereço" value={selectedMinister.address ? [selectedMinister.address.street, selectedMinister.address.number, selectedMinister.address.complement, selectedMinister.address.city, selectedMinister.address.state, selectedMinister.address.countyOrRegion].filter(Boolean).join(', ') : '-'} compact />
+            <InfoTile label="Código postal" value={selectedMinister.address?.postalCode || '-'} compact />
           </div>
         </div>
       </div>
@@ -373,9 +381,21 @@ export default function Ministros() {
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <SmartSelect
+                  className="col-span-2"
+                  label="País"
+                  selectedId={form.countryCode}
+                  onSelect={(id) => {
+                    const countryCode = typeof id === 'string' ? id : DEFAULT_COUNTRY_CODE;
+                    setForm((prev) => ({ ...prev, countryCode, postalCode: '' }));
+                  }}
+                  items={countrySelectItems}
+                  placeholder="Selecione um país"
+                  required
+                />
+                <SmartSelect
                   label="Membro *"
                   selectedId={form.memberId}
-                  onSelect={(id) => setF('memberId', id)}
+                  onSelect={(id) => setF('memberId', typeof id === 'number' ? id : '')}
                   items={members.map((m) => ({ id: m.id, name: m.name }))}
                   placeholder="Selecione um membro"
                   required
@@ -422,19 +442,19 @@ export default function Ministros() {
                 <p className="text-white/50 text-xs font-['Nunito'] mb-3 uppercase tracking-wider">Endereço</p>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-white/70 text-sm font-['Nunito'] block mb-1">CEP {cepLoading && <span className="text-[#017158] text-xs">buscando...</span>}</label>
+                    <label className="text-white/70 text-sm font-['Nunito'] block mb-1">{form.countryCode === 'BR' ? 'CEP' : 'Código postal'} {form.countryCode === 'BR' && cepLoading && <span className="text-[#017158] text-xs">buscando...</span>}</label>
                     <input 
                       type="text" 
-                      value={formatCEP(form.zipCode)} 
-                      onChange={e => handleCEPChange(e.target.value)}
+                      value={formatPostalCode(form.countryCode, form.postalCode)} 
+                      onChange={e => handlePostalCodeChange(e.target.value)}
                       inputMode="numeric"
-                      pattern="[0-9]*"
-                      maxLength={9}
-                      disabled={cepLoading}
+                      pattern={form.countryCode === 'BR' ? '[0-9]*' : undefined}
+                      maxLength={form.countryCode === 'BR' ? 9 : 24}
+                      disabled={form.countryCode === 'BR' && cepLoading}
                       className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                      placeholder="00000-000" 
+                      placeholder={form.countryCode === 'BR' ? '00000-000' : 'Informe o código postal'} 
                     />
-                    {cepError && <p className="text-red-400 text-xs mt-1">{cepError}</p>}
+                    {form.countryCode === 'BR' && cepError && <p className="text-red-400 text-xs mt-1">{cepError}</p>}
                   </div>
                   <div>
                     <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Número</label>
@@ -448,6 +468,12 @@ export default function Ministros() {
                       className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                       placeholder="Nome da rua" />
                   </div>
+                  <div className="col-span-2">
+                    <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Complemento</label>
+                    <input type="text" value={form.complement} onChange={e => setF('complement', e.target.value)}
+                      className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
+                      placeholder="Apto, bloco, referência" />
+                  </div>
                   <div>
                     <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Cidade</label>
                     <input type="text" value={form.city} onChange={e => setF('city', e.target.value)}
@@ -459,6 +485,12 @@ export default function Ministros() {
                     <input type="text" value={form.state} onChange={e => setF('state', e.target.value)}
                       className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                       placeholder="UF" maxLength={2} />
+                  </div>
+                  <div>
+                    <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Região/Condado</label>
+                    <input type="text" value={form.countyOrRegion} onChange={e => setF('countyOrRegion', e.target.value)}
+                      className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
+                      placeholder="Condado, província, região" />
                   </div>
                 </div>
               </div>

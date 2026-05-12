@@ -10,15 +10,17 @@ export function normalizeText(value: string): string {
 }
 
 interface SmartSelectOption {
-  id: number;
+  id: number | string;
   name: string;
+  iconUrl?: string;
 }
 
 interface SmartSelectProps {
   label: string;
-  selectedId: number | '';
-  onSelect: (id: number | '') => void;
+  selectedId: number | string | '';
+  onSelect: (id: number | string | '') => void;
   items: SmartSelectOption[];
+  defaultSelectedId?: number | string;
   placeholder?: string;
   required?: boolean;
   disabled?: boolean;
@@ -30,6 +32,7 @@ export default function SmartSelect({
   selectedId,
   onSelect,
   items,
+  defaultSelectedId,
   placeholder = 'Selecione...',
   required = false,
   disabled = false,
@@ -38,7 +41,8 @@ export default function SmartSelect({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
 
-  const selected = useMemo(() => items.find(item => item.id === selectedId), [items, selectedId]);
+  const resolvedSelectedId = selectedId === '' || selectedId == null ? defaultSelectedId ?? '' : selectedId;
+  const selected = useMemo(() => items.find(item => item.id === resolvedSelectedId), [items, resolvedSelectedId]);
   const filteredItems = useMemo(() => {
     if (!query.trim()) return items;
     const normQuery = normalizeText(query);
@@ -59,7 +63,17 @@ export default function SmartSelect({
               disabled ? 'opacity-50 cursor-not-allowed' : ''
             }`}
           >
-            {selected ? selected.name : placeholder}
+            <span className="flex items-center gap-2 min-w-0">
+              {selected?.iconUrl && (
+                <img
+                  src={selected.iconUrl}
+                  alt=""
+                  aria-hidden="true"
+                  className="h-4 w-6 rounded-[2px] object-cover flex-shrink-0"
+                />
+              )}
+              <span className="truncate">{selected ? selected.name : placeholder}</span>
+            </span>
           </button>
         </PopoverTrigger>
         <PopoverContent className="w-full p-0">
@@ -80,7 +94,17 @@ export default function SmartSelect({
                       setQuery('');
                     }}
                   >
-                    {option.name}
+                    <span className="flex items-center gap-2 min-w-0 w-full">
+                      {option.iconUrl && (
+                        <img
+                          src={option.iconUrl}
+                          alt=""
+                          aria-hidden="true"
+                          className="h-4 w-6 rounded-[2px] object-cover flex-shrink-0"
+                        />
+                      )}
+                      <span className="truncate">{option.name}</span>
+                    </span>
                   </CommandItem>
                 ))
               ) : (

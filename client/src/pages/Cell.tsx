@@ -396,23 +396,19 @@ export default function Celulas() {
                 </select>
               </div>
               <div>
-                <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Igreja *</label>
-                <select 
-                  value={form.churchId} 
-                  onChange={e => setForm({ ...form, churchId: e.target.value ? Number(e.target.value) : '' })}
-                  className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white focus:border-[#017158] outline-none"
+                <SmartSelect
+                  label="Igreja"
+                  selectedId={form.churchId}
+                  onSelect={(id) => setForm({ ...form, churchId: id === '' ? '' : Number(id) })}
+                  items={churchOptions}
+                  placeholder="Selecione uma igreja"
                   disabled={isLocalScope}
-                >
-                  <option value="">Selecione uma igreja</option>
-                  {scopedChurches.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
+                />
               </div>
               <SmartSelect
                 label="Responsável"
                 selectedId={form.responsibleId}
-                onSelect={(id) => setForm({ ...form, responsibleId: id })}
+                onSelect={(id) => setForm({ ...form, responsibleId: id === '' ? '' : Number(id) })}
                 items={scopedMembers.map((m) => ({ id: m.id, name: m.name }))}
                 placeholder="Selecione um responsável"
               />

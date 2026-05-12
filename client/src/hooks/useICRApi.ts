@@ -88,11 +88,14 @@ export interface Church {
   id: number;
   name: string;
   address?: {
-    zipCode?: string;
+    countryCode?: string;
+    postalCode?: string;
     street?: string;
     number?: string;
+    complement?: string;
     city?: string;
     state?: string;
+    countyOrRegion?: string;
   };
   federationId: number;
   federationName?: string;
@@ -142,7 +145,15 @@ export interface Member {
   genderName?: string;
   class?: string;
   className?: string;
-  cellPhone?: string;
+  cellPhone?: {
+    countryCode?: string;
+    countryName?: string;
+    number?: string;
+    displayFormat?: string;
+    internationalFormat?: string;
+    e164Format?: string;
+    isMobileNumber?: boolean;
+  };
 }
 
 export interface Minister {
@@ -152,7 +163,15 @@ export interface Minister {
   churchMemberName?: string;
   federationMemberName?: string;
   memberBirthday?: string;
-  memberPhone?: string;
+  memberPhone?: {
+    countryCode?: string;
+    countryName?: string;
+    number?: string;
+    displayFormat?: string;
+    internationalFormat?: string;
+    e164Format?: string;
+    isMobileNumber?: boolean;
+  };
   memberWifeName?: string;
   memberWeddingDate?: string;
   cpf?: string;
@@ -170,11 +189,14 @@ export interface Minister {
   insuranceStatus?: string;
   status?: string;
   address?: {
-    zipCode?: string;
+    countryCode?: string;
+    postalCode?: string;
     street?: string;
     number?: string;
+    complement?: string;
     city?: string;
     state?: string;
+    countyOrRegion?: string;
   };
 }
 
