@@ -256,9 +256,19 @@ const handleSave = async () => {
 
     const path = query.toString()
       ? `/api/churches/bulk/${item.id}?${query.toString()}`
-      : `/api/churches/bulk/${item.id}`;
+      : `/api/churches/${item.id}`;
 
-    await fetchApi(path, { method: 'DELETE' });
+    if (query.toString()) {
+      // when moving dependencies use bulk endpoint but with PATCH to mark/transfer
+      await fetchApi(path, { method: 'PATCH' });
+    } else {
+      // mark church as deactivated instead of deleting
+      await fetchApi(path, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ failureMessage: 'Desativada via interface' }),
+      });
+    }
     load();
   };
 
