@@ -443,10 +443,29 @@ export default function Repasses() {
     const dueMonthName = MONTH_NAMES[deadline.getMonth()];
     const monthLabel = `${monthName.charAt(0).toUpperCase()}${monthName.slice(1)}`;
     const dueMonthLabel = `${dueMonthName.charAt(0).toUpperCase()}${dueMonthName.slice(1)}`;
+    const today = new Date();
+    const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const deadlineDate = new Date(deadline.getFullYear(), deadline.getMonth(), deadline.getDate());
+    const deadlineVerb = deadlineDate < todayDate ? 'foi' : 'será';
 
     const pendingList = pendingRows.length
-      ? pendingRows
-          .map((row, index) => `${index + 1} - \t${row.churchName.toUpperCase()}\t${(row.federationName || 'SEM FEDERAÇÃO').toUpperCase()}`)
+      ? Array.from(
+          pendingRows.reduce((groups, row) => {
+            const federationKey = (row.federationName || 'SEM FEDERAÇÃO').trim().toUpperCase();
+            const group = groups.get(federationKey) || [];
+            group.push(row);
+            groups.set(federationKey, group);
+            return groups;
+          }, new Map<string, RepassRow[]>()),
+        )
+          .map(([, groupRows]) =>
+            groupRows
+              .map(
+                (row, index) =>
+                  `${index + 1} - \t${row.churchName.toUpperCase()}\t${(row.federationName || 'SEM FEDERAÇÃO').toUpperCase()}`,
+              )
+              .join('\n'),
+          )
           .join('\n\n')
       : 'Nenhuma igreja pendente nesta referência.';
 
@@ -457,7 +476,7 @@ export default function Repasses() {
       '',
       pendingList,
       '',
-      `Dia ${formatDateBR(deadline)} foi o prazo final para o envio das informações para a Federação, através do e-mail: financeiro@icravivalista.com.br, referente ao mês de ${monthLabel}.`,
+      `Dia ${formatDateBR(deadline)} ${deadlineVerb} o prazo final para o envio das informações para a Federação, através do e-mail: financeiro@icravivalista.com.br, referente ao mês de ${monthLabel}.`,
       '',
       `O repasse de ${selectedReference.name} vence no último dia útil do mês de cobrança (${dueMonthLabel}).`,
     ].join('\n');
