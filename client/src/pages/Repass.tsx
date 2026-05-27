@@ -417,7 +417,7 @@ export default function Repasses() {
           amount: repass?.amount,
         };
       })
-      .filter((row) => typeof row.amount === 'number' && row.amount < 150)
+      .filter((row) => row.amount == null || row.amount < 150)
       .sort((a, b) => {
         const federationCompare = (a.federationName || '').localeCompare(b.federationName || '', 'pt-BR', {
           sensitivity: 'base',
