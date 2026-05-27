@@ -3,6 +3,7 @@ import ICRLayout from '../components/ICRLayout';
 import { useICRApi, Repass, Reference, Church } from '../hooks/useICRApi';
 import { useTheme } from '../contexts/ThemeContext';
 import { Button } from '../components/ui/button';
+import { generateAreaCode } from '../../../shared/areaCodes';
 import {
   Dialog,
   DialogContent,
@@ -443,6 +444,10 @@ export default function Repasses() {
     const dueMonthName = MONTH_NAMES[deadline.getMonth()];
     const monthLabel = `${monthName.charAt(0).toUpperCase()}${monthName.slice(1)}`;
     const dueMonthLabel = `${dueMonthName.charAt(0).toUpperCase()}${dueMonthName.slice(1)}`;
+    // chargedMonth is one month before competenceDate (e.g., Maio -> Abril)
+    const chargedMonthDate = new Date(competenceDate.getFullYear(), competenceDate.getMonth() - 1, 1);
+    const chargedMonthName = MONTH_NAMES[chargedMonthDate.getMonth()];
+    const chargedMonthLabel = `${chargedMonthName.charAt(0).toUpperCase()}${chargedMonthName.slice(1)}`;
     const today = new Date();
     const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
     const deadlineDate = new Date(deadline.getFullYear(), deadline.getMonth(), deadline.getDate());
@@ -450,21 +455,38 @@ export default function Repasses() {
 
     let pendingIndex = 0;
     const numberedPendingList = pendingRows.length
-      ? Array.from(
-          pendingRows.reduce((groups, row) => {
-            const federationKey = (row.federationName || 'SEM FEDERAÇÃO').trim().toUpperCase();
-            const group = groups.get(federationKey) || [];
+      ? (() => {
+          const groups = pendingRows.reduce((map, row) => {
+            const federationKey = (row.federationName || 'SEM FEDERAÇÃO').trim();
+            const key = federationKey || 'SEM FEDERAÇÃO';
+            const group = map.get(key) || [];
             group.push(row);
-            groups.set(federationKey, group);
-            return groups;
-          }, new Map<string, RepassRow[]>()),
-        )
-          .map(([, groupRows]) =>
-            groupRows
-              .map((row) => `${++pendingIndex} - \t${row.churchName.toUpperCase()}\t${(row.federationName || 'SEM FEDERAÇÃO').toUpperCase()}`)
-              .join('\n'),
-          )
-          .join('\n\n')
+            map.set(key, group);
+            return map;
+          }, new Map<string, RepassRow[]>());
+
+          // generate distinct 3-letter codes per federation (area)
+          const used = new Set<string>();
+          const areaCodeFor = new Map<string, string>();
+          for (const areaName of groups.keys()) {
+            const code = generateAreaCode(areaName, used);
+            used.add(code);
+            areaCodeFor.set(areaName, code);
+          }
+
+          const parts: string[] = [];
+          for (const [areaName, groupRows] of groups) {
+            const code = areaCodeFor.get(areaName) || generateAreaCode(areaName, used);
+            for (const row of groupRows) {
+              parts.push(`${++pendingIndex} - \t${row.churchName.toUpperCase()} \t| ${code}`);
+            }
+            parts.push('');
+          }
+
+          // remove trailing blank
+          if (parts.length > 0 && parts[parts.length - 1] === '') parts.pop();
+          return parts.join('\n');
+        })()
       : 'Nenhuma igreja pendente nesta referência.';
 
     return [
@@ -474,9 +496,7 @@ export default function Repasses() {
       '',
       numberedPendingList,
       '',
-      `Dia ${formatDateBR(deadline)} ${deadlineVerb} o prazo final para o envio das informações para a Federação, através do e-mail: financeiro@icravivalista.com.br, referente ao mês de ${monthLabel}.`,
-      '',
-      `O repasse de ${selectedReference.name} vence no último dia útil do mês de cobrança (${dueMonthLabel}).`,
+      `Dia ${formatDateBR(deadline)} ${deadlineVerb} o prazo final para o envio das informações para a Federação, através do e-mail: financeiro@icravivalista.com.br, referente ao repasse de ${selectedReference.name}.`,
     ].join('\n');
   };
 
