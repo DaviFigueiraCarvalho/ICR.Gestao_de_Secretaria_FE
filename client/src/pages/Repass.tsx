@@ -417,7 +417,7 @@ export default function Repasses() {
           amount: repass?.amount,
         };
       })
-      .filter((row) => !row.amount || row.amount <= 0)
+      .filter((row) => typeof row.amount === 'number' && row.amount < 150)
       .sort((a, b) => {
         const federationCompare = (a.federationName || '').localeCompare(b.federationName || '', 'pt-BR', {
           sensitivity: 'base',
@@ -448,7 +448,8 @@ export default function Repasses() {
     const deadlineDate = new Date(deadline.getFullYear(), deadline.getMonth(), deadline.getDate());
     const deadlineVerb = deadlineDate < todayDate ? 'foi' : 'será';
 
-    const pendingList = pendingRows.length
+    let pendingIndex = 0;
+    const numberedPendingList = pendingRows.length
       ? Array.from(
           pendingRows.reduce((groups, row) => {
             const federationKey = (row.federationName || 'SEM FEDERAÇÃO').trim().toUpperCase();
@@ -460,10 +461,7 @@ export default function Repasses() {
         )
           .map(([, groupRows]) =>
             groupRows
-              .map(
-                (row, index) =>
-                  `${index + 1} - \t${row.churchName.toUpperCase()}\t${(row.federationName || 'SEM FEDERAÇÃO').toUpperCase()}`,
-              )
+              .map((row) => `${++pendingIndex} - \t${row.churchName.toUpperCase()}\t${(row.federationName || 'SEM FEDERAÇÃO').toUpperCase()}`)
               .join('\n'),
           )
           .join('\n\n')
@@ -474,7 +472,7 @@ export default function Repasses() {
       '',
       `Igrejas sem efetuar o envio das informações por e-mail, ou sem ter feito o Repasse de ${selectedReference.name} até a presente data:`,
       '',
-      pendingList,
+      numberedPendingList,
       '',
       `Dia ${formatDateBR(deadline)} ${deadlineVerb} o prazo final para o envio das informações para a Federação, através do e-mail: financeiro@icravivalista.com.br, referente ao mês de ${monthLabel}.`,
       '',
