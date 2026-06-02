@@ -224,7 +224,7 @@ export default function Familias() {
 
     console.log('🔵 [Family] Enviando ministro:', JSON.stringify(ministerBody, null, 2));
 
-    const ministersResult = await fetchApi<Minister[]>('/api/ministers?page=1&pageSize=100').catch(() => []);
+    const ministersResult = await fetchApi<Minister[]>('/api/ministers?pageNumber=1&pageQuantity=100').catch(() => []);
     const existingMinister = Array.isArray(ministersResult)
       ? ministersResult.find((minister) => minister.memberId === memberId)
       : undefined;
@@ -261,7 +261,7 @@ export default function Familias() {
 
         const ministersRequest = isLocalScope
           ? Promise.resolve<Minister[]>([])
-          : fetchApi<Minister[]>('/api/ministers?page=1&pageSize=200');
+          : fetchApi<Minister[]>('/api/ministers?pageNumber=1&pageQuantity=200');
 
         const [churchesRes, cellsRes, federationsRes, ministersRes, membersRes] = await Promise.allSettled([
           churchesRequest,
@@ -290,7 +290,7 @@ export default function Familias() {
     try {
       const result = await fetchApi<Family[]>(
         serverPaginationEnabled
-          ? `/api/families?page=${page}&pageSize=${pageSize}`
+          ? `/api/families?pageNumber=${page}&pageQuantity=${pageSize}`
           : '/api/families',
       );
       const familiesData = Array.isArray(result) ? result : [];

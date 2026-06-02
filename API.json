@@ -41,6 +41,33 @@
         "tags": [
           "Cell"
         ],
+        "parameters": [
+          {
+            "name": "pageNumber",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            }
+          },
+          {
+            "name": "pageQuantity",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 50
+            }
+          },
+          {
+            "name": "querySearch",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -226,6 +253,33 @@
       "get": {
         "tags": [
           "Church"
+        ],
+        "parameters": [
+          {
+            "name": "pageNumber",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            }
+          },
+          {
+            "name": "pageQuantity",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 50
+            }
+          },
+          {
+            "name": "querySearch",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
         ],
         "responses": {
           "200": {
@@ -670,6 +724,13 @@
               "format": "int32",
               "default": 50
             }
+          },
+          {
+            "name": "querySearch",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -921,6 +982,33 @@
         "tags": [
           "Federation"
         ],
+        "parameters": [
+          {
+            "name": "pageNumber",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            }
+          },
+          {
+            "name": "pageQuantity",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 50
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK",
@@ -1077,6 +1165,13 @@
               "type": "integer",
               "format": "int32",
               "default": 50
+            }
+          },
+          {
+            "name": "querySearch",
+            "in": "query",
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -1645,6 +1740,13 @@
               "format": "int32",
               "default": 50
             }
+          },
+          {
+            "name": "querySearch",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -2068,6 +2170,13 @@
               "type": "integer",
               "format": "int32",
               "default": 50
+            }
+          },
+          {
+            "name": "search",
+            "in": "query",
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -3173,6 +3282,11 @@
       "Address": {
         "type": "object",
         "properties": {
+          "id": {
+            "type": "integer",
+            "format": "int32",
+            "nullable": true
+          },
           "country": {
             "$ref": "#/components/schemas/Country"
           },
@@ -4623,7 +4737,7 @@
   },
   "security": [
     {
-      "Bearer": [ ]
+      "Bearer": []
     }
   ]
 }

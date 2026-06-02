@@ -25,6 +25,7 @@ interface CRUDTableProps<T extends { id: number }> {
   onRefresh?: () => void;
   searchable?: boolean;
   searchPlaceholder?: string;
+  onSearch?: (searchTerm: string) => void;
   emptyMessage?: string;
   addLabel?: string;
   pagination?: boolean;
@@ -57,6 +58,7 @@ export default function CRUDTable<T extends { id: number }>({
   onRefresh,
   searchable = true,
   searchPlaceholder = 'Buscar...',
+  onSearch,
   emptyMessage = 'Nenhum registro encontrado',
   addLabel = 'Adicionar',
   pagination = false,
@@ -70,7 +72,8 @@ export default function CRUDTable<T extends { id: number }>({
   const [deleteConfirm, setDeleteConfirm] = useState<T | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
 
-  const filteredData = searchable && search
+  // When onSearch callback exists, don't filter locally - search is done server-side
+  const filteredData = !onSearch && searchable && search
     ? data.filter((item) =>
         Object.values(item as Record<string, unknown>).some((val) =>
           String(val).toLowerCase().includes(search.toLowerCase())
@@ -268,7 +271,14 @@ export default function CRUDTable<T extends { id: number }>({
                 <input
                   type="text"
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(e) => {
+                    console.log('[CRUDTable Search Debug] Input changed, value:', e.target.value);
+                    setSearch(e.target.value);
+                    if (onSearch) {
+                      console.log('[CRUDTable Search Debug] Calling onSearch callback with value:', e.target.value);
+                      onSearch(e.target.value);
+                    }
+                  }}
                   placeholder={searchPlaceholder}
                   className="bg-[#2b2b2b] border border-white/20 rounded-lg pl-9 pr-4 py-2 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] transition-colors w-64"
                 />

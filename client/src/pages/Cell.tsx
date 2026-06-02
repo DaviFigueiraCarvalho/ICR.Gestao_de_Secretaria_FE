@@ -101,12 +101,12 @@ export default function Celulas() {
 
       const ministersRequest = isLocalScope
         ? Promise.resolve<Minister[]>([])
-        : fetchApi<Minister[]>('/api/ministers?page=1&pageSize=200');
+        : fetchApi<Minister[]>('/api/ministers?pageNumber=1&pageQuantity=200');
 
       const [cellsResult, churchesResult, familiesResult, federationsResult, ministersResult, membersResult] = await Promise.allSettled([
         fetchApi<Cell[]>('/api/cells'),
         churchesRequest,
-        fetchApi<Family[]>('/api/families?page=1&pageSize=200'),
+        fetchApi<Family[]>('/api/families?pageNumber=1&pageQuantity=200'),
         federationsRequest,
         ministersRequest,
         fetchApi<Member[]>('/api/members'),

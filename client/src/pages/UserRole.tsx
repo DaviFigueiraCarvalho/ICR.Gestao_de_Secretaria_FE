@@ -184,7 +184,7 @@ export default function Usuarios() {
   const loadLookups = async () => {
     try {
       const [membersResult, rolesResult] = await Promise.allSettled([
-        fetchApi<Member[]>('/api/members?page=1&pageSize=200'),
+        fetchApi<Member[]>('/api/members?pageNumber=1&pageQuantity=200'),
         fetchApi<unknown>('/api/user-roles/roles'),
       ]);
 

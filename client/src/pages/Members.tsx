@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import ICRLayout from '../components/ICRLayout';
 import CRUDTable, { Column } from '../components/CRUDTable';
 import SmartSelect from '../components/SmartSelect';
@@ -118,6 +118,8 @@ export default function Membros() {
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [showMinisterEditModal, setShowMinisterEditModal] = useState(false);
   const [selectedMinister, setSelectedMinister] = useState<Minister | null>(null);
+  const [searchTerm, setSearchTerm] = useState('');
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const scopeLevel = getScopeLevel(user?.scope, user?.username);
   const isLocalScope = scopeLevel === 'local';
   const isFederatedScope = scopeLevel === 'federated';
@@ -185,7 +187,7 @@ export default function Membros() {
       ministerBody.address = null;
     }
 
-    const ministers = await fetchApi<Minister[]>('/api/ministers?page=1&pageSize=100').catch(() => []);
+    const ministers = await fetchApi<Minister[]>('/api/ministers?pageNumber=1&pageQuantity=100').catch(() => []);
     const existingMinister = Array.isArray(ministers)
       ? ministers.find((minister) => minister.memberId === memberId)
       : undefined;
@@ -205,43 +207,76 @@ export default function Membros() {
     return 'created';
   };
 
+  const hasActiveFilters = useMemo(
+    () => selectedFederationIds.length > 0 || selectedChurchIds.length > 0 || selectedCellIds.length > 0,
+    [selectedFederationIds, selectedChurchIds, selectedCellIds],
+  );
+
+  const buildFilterUrl = (): string => {
+    const params = new URLSearchParams();
+    if (selectedFederationIds.length > 0) {
+      params.append('federationId', selectedFederationIds[0].toString());
+    }
+    if (selectedChurchIds.length > 0) {
+      params.append('churchId', selectedChurchIds[0].toString());
+    }
+    if (selectedCellIds.length > 0) {
+      params.append('cellId', selectedCellIds[0].toString());
+    }
+    return `/api/members/filter?${params.toString()}`;
+  };
+
   const load = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const requestList = serverPaginationEnabled
-        ? [
-            fetchApi<Member[]>(`/api/members?page=${page}&pageSize=${pageSize}`),
-            fetchApi<Family[]>('/api/families?page=1&pageSize=100'),
-            isLocalScope && typeof user?.churchId === 'number'
-              ? fetchApi<Church>(`/api/churches/${user.churchId}`).then((church) => [church]).catch(() => buildLocalChurchFallback(user.churchId))
-              : fetchApi<Church[]>('/api/churches'),
-            fetchApi<Cell[]>('/api/cells'),
-            isLocalScope ? Promise.resolve<Federation[]>([]) : fetchApi<Federation[]>('/api/federations'),
-            isLocalScope ? Promise.resolve<Minister[]>([]) : fetchApi<Minister[]>('/api/ministers?page=1&pageSize=200'),
-          ]
-        : [
-            fetchApi<Member[]>('/api/members'),
-            fetchApi<Family[]>('/api/families?page=1&pageSize=100'),
-            isLocalScope && typeof user?.churchId === 'number'
-              ? fetchApi<Church>(`/api/churches/${user.churchId}`).then((church) => [church]).catch(() => buildLocalChurchFallback(user.churchId))
-              : fetchApi<Church[]>('/api/churches'),
-            fetchApi<Cell[]>('/api/cells'),
-            isLocalScope ? Promise.resolve<Federation[]>([]) : fetchApi<Federation[]>('/api/federations'),
-            isLocalScope ? Promise.resolve<Minister[]>([]) : fetchApi<Minister[]>('/api/ministers?page=1&pageSize=200'),
-          ];
+      const buildMembersEndpoint = (): string => {
+        if (hasActiveFilters) {
+          return buildFilterUrl();
+        }
+
+        if (!serverPaginationEnabled) {
+          return '/api/members';
+        }
+
+        const params = new URLSearchParams();
+        params.append('pageNumber', String(page));
+        params.append('pageQuantity', String(pageSize));
+
+        if (searchTerm.trim()) {
+          params.append('querySearch', searchTerm.trim());
+          console.log('[Members Search Debug] searchTerm:', searchTerm, 'querySearch param added');
+        }
+
+        const endpoint = `/api/members?${params.toString()}`;
+        console.log('[Members Search Debug] Final endpoint:', endpoint);
+        return endpoint;
+      };
+
+      const membersEndpoint = buildMembersEndpoint();
+
+      const requestList = [
+        fetchApi<Member[]>(membersEndpoint),
+        fetchApi<Family[]>('/api/families?pageNumber=1&pageQuantity=100'),
+        isLocalScope && typeof user?.churchId === 'number'
+          ? fetchApi<Church>(`/api/churches/${user.churchId}`).then((church) => [church]).catch(() => buildLocalChurchFallback(user.churchId))
+          : fetchApi<Church[]>('/api/churches'),
+        fetchApi<Cell[]>('/api/cells'),
+        isLocalScope ? Promise.resolve<Federation[]>([]) : fetchApi<Federation[]>('/api/federations'),
+        isLocalScope ? Promise.resolve<Minister[]>([]) : fetchApi<Minister[]>('/api/ministers?pageNumber=1&pageQuantity=200'),
+      ];
 
       const [membersResult, familiesResult, churchesResult, cellsResult, federationsResult, ministersResult] = await Promise.allSettled(requestList);
 
       if (membersResult.status === 'rejected') {
-        if (serverPaginationEnabled && isForbiddenError(membersResult.reason)) {
+        if (serverPaginationEnabled && !hasActiveFilters && isForbiddenError(membersResult.reason)) {
           const fallbackResults = await Promise.allSettled([
             fetchApi<Member[]>('/api/members'),
-            fetchApi<Family[]>('/api/families?page=1&pageSize=100'),
+            fetchApi<Family[]>('/api/families?pageNumber=1&pageQuantity=100'),
             fetchApi<Church[]>('/api/churches'),
             fetchApi<Cell[]>('/api/cells'),
             fetchApi<Federation[]>('/api/federations'),
-            fetchApi<Minister[]>('/api/ministers?page=1&pageSize=200'),
+            fetchApi<Minister[]>('/api/ministers?pageNumber=1&pageQuantity=200'),
           ]);
 
           const [fallbackMembersResult, fallbackFamiliesResult, fallbackChurchesResult, fallbackCellsResult, fallbackFederationsResult, fallbackMinistersResult] = fallbackResults;
@@ -269,13 +304,13 @@ export default function Membros() {
 
       const membersData = Array.isArray(membersResult.value) ? (membersResult.value as Member[]) : [];
 
-      if (serverPaginationEnabled && page > 1 && membersData.length === 0) {
+      if (serverPaginationEnabled && !hasActiveFilters && page > 1 && membersData.length === 0) {
         setPage((prev) => Math.max(1, prev - 1));
         return;
       }
 
       setData(membersData);
-      setHasNextPage(serverPaginationEnabled && membersData.length === pageSize);
+      setHasNextPage(!hasActiveFilters && serverPaginationEnabled && membersData.length === pageSize);
       setFamilies((settledValue(familiesResult) ?? []) as Family[]);
       setChurches((settledValue(churchesResult) ?? []) as Church[]);
       setCells((settledValue(cellsResult) ?? []) as Cell[]);
@@ -288,7 +323,34 @@ export default function Membros() {
     }
   };
 
-  useEffect(() => { load(); }, [page, pageSize, serverPaginationEnabled]);
+  useEffect(() => {
+    setPage(1);
+    load();
+  }, [hasActiveFilters]);
+
+  useEffect(() => {
+    load();
+  }, [page, pageSize, serverPaginationEnabled]);
+
+  useEffect(() => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+    }
+
+    console.log('[Members Search Debug] Search effect triggered with searchTerm:', searchTerm);
+
+    debounceTimerRef.current = setTimeout(() => {
+      console.log('[Members Search Debug] Debounce completed, calling load() with searchTerm:', searchTerm);
+      setPage(1);
+      load();
+    }, 500);
+
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current);
+      }
+    };
+  }, [searchTerm]);
 
   const openAdd = () => {
     setEditItem(null);
@@ -568,6 +630,10 @@ export default function Membros() {
   );
 
   const filteredData = useMemo(() => {
+    if (hasActiveFilters) {
+      return data;
+    }
+
     return data.filter((member) => {
       const family = scopedFamilies.find((familyItem) => familyItem.id === member.familyId);
       if (!family) return false;
@@ -576,26 +642,29 @@ export default function Membros() {
       const cellId = family?.cellId;
       const federationId = scopedChurches.find((church) => church.id === churchId)?.federationId;
 
-      const federationMatch =
-        selectedFederationIds.length === 0 ||
+      const federationMatch = selectedFederationIds.length === 0 ||
         (typeof federationId === 'number' && selectedFederationIds.includes(federationId));
 
-      const churchMatch =
-        selectedChurchIds.length === 0 ||
+      const churchMatch = selectedChurchIds.length === 0 ||
         (typeof churchId === 'number' && selectedChurchIds.includes(churchId));
 
-      const cellMatch =
-        selectedCellIds.length === 0 ||
+      const cellMatch = selectedCellIds.length === 0 ||
         (typeof cellId === 'number' && selectedCellIds.includes(cellId));
 
       return federationMatch && churchMatch && cellMatch;
     });
-  }, [data, scopedChurches, scopedFamilies, selectedCellIds, selectedChurchIds, selectedFederationIds]);
+  }, [data, hasActiveFilters, scopedChurches, scopedFamilies, selectedCellIds, selectedChurchIds, selectedFederationIds]);
 
   const handlePageSizeChange = (size: number) => {
     const safeSize = Math.min(100, Math.max(1, size));
     setPageSize(safeSize);
     setPage(1);
+  };
+
+  const handleSearch = (value: string) => {
+    console.log('[Members Search Debug] handleSearch called with value:', value);
+    setSearchTerm(value);
+    console.log('[Members Search Debug] searchTerm state updated');
   };
 
   const topFilters = (
@@ -634,11 +703,11 @@ export default function Membros() {
         title="Membros"
         topContent={topFilters}
         data={filteredData}
-        pagination={!serverPaginationEnabled}
+        pagination={!serverPaginationEnabled || hasActiveFilters}
         pageSize={pageSize}
         onPageSizeChange={handlePageSizeChange}
         pageSizeOptions={[10, 25, 50, 100]}
-        serverPagination={serverPaginationEnabled ? {
+        serverPagination={!hasActiveFilters && serverPaginationEnabled ? {
           currentPage: page,
           pageSize,
           hasNextPage,
@@ -656,6 +725,7 @@ export default function Membros() {
         onDelete={handleDelete}
         onRefresh={load}
         searchPlaceholder="Buscar membro..."
+        onSearch={handleSearch}
         emptyMessage="Nenhum membro encontrado"
         addLabel="Novo Membro"
       />

@@ -75,8 +75,8 @@ export default function Ministros() {
     setError(null);
     try {
       const [ministersResult, membersResult] = await Promise.allSettled([
-        fetchApi<Minister[]>('/api/ministers?page=1&pageSize=100'),
-        fetchApi<Member[]>('/api/members?page=1&pageSize=100'),
+        fetchApi<Minister[]>('/api/ministers?pageNumber=1&pageQuantity=100'),
+        fetchApi<Member[]>('/api/members?pageNumber=1&pageQuantity=100'),
       ]);
 
       if (ministersResult.status === 'rejected') {
