@@ -25,7 +25,7 @@ export function MinisterDataProvider({ children }: { children: ReactNode }) {
     setError(null);
 
     try {
-      const response = await fetchApi<Minister[]>('/api/ministers?page=1&pageSize=100');
+      const response = await fetchApi<Minister[]>('/api/ministers/insured');
       setData(Array.isArray(response) ? response : []);
       setShouldReload(false);
     } catch (err) {
