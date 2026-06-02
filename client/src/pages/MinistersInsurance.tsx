@@ -44,6 +44,7 @@ const getPhoneDisplay = (
   if (!phone) return '-';
 
   return (
+    phone.e164Format ||
     phone.displayFormat ||
     phone.internationalFormat ||
     phone.number ||
@@ -210,7 +211,7 @@ const getPhoneDisplay = (
     insuredMinisters.forEach((minister, index) => {
       const name = normalizePdfText(minister.memberName || '-');
       const cpf = normalizePdfText(minister.cpf || '-');
-      const phone = normalizePdfText(minister.memberPhone || minister.member?.cellPhone || '-');
+      const phone = normalizePdfText(getPhoneDisplay(minister.memberPhone) || '-');
       const email = normalizePdfText(minister.email || '-');
       const birthDate = normalizePdfText(minister.memberBirthday ? new Date(minister.memberBirthday).toLocaleDateString('pt-BR') : '-');
 
