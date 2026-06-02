@@ -8,7 +8,7 @@ import { buildLocalChurchFallback, getScopeLevel, resolveScopeRestrictions } fro
 import { useICRApi, Member, Family, Church, Cell, Federation, Minister } from '../hooks/useICRApi';
 import { settledValue } from '@/lib/utils';
 import { useViaCEP } from '../hooks/useViaCEP';
-import { countrySelectItems, DEFAULT_COUNTRY_CODE, formatPhoneNumber, formatPostalCode, normalizePhoneNumber, normalizePostalCode } from '../lib/country';
+import { countrySelectItems, DEFAULT_COUNTRY_CODE, formatPhoneNumber, formatPostalCode, normalizePhoneNumber, normalizePostalCode, validatePhoneNumber } from '../lib/country';
 import {
   GENDER_FEMALE,
   PASTOR_ROLE,
@@ -98,6 +98,7 @@ export default function Membros() {
   });
   const [ministerForm, setMinisterForm] = useState<MinistroInlineForm>(EMPTY_MINISTER_FORM);
   const [saving, setSaving] = useState(false);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
   const [families, setFamilies] = useState<Family[]>([]);
   const [churches, setChurches] = useState<Church[]>([]);
   const [cells, setCells] = useState<Cell[]>([]);
@@ -278,6 +279,7 @@ export default function Membros() {
     setEditItem(null);
     setForm({ name: '', familyId: '', gender: 1, birthDate: '', hasBeenMarried: false, role: 0, phoneCountryCode: DEFAULT_COUNTRY_CODE, phoneNumber: '' });
     setMinisterForm(EMPTY_MINISTER_FORM);
+    setPhoneError(null);
     setShowModal(true);
   };
 
@@ -294,10 +296,13 @@ export default function Membros() {
       phoneNumber: item.cellPhone?.number || '',
     });
     setMinisterForm(EMPTY_MINISTER_FORM);
+    setPhoneError(null);
     setShowModal(true);
   };
 
   const handleSave = async () => {
+    if (saving) return;
+
     if (!form.name.trim()) { toast.error('Nome é obrigatório'); return; }
 
     if (form.familyId && !scopedFamilies.some((family) => family.id === form.familyId)) {
@@ -306,10 +311,16 @@ export default function Membros() {
     }
 
     const normalizedCellPhone = normalizePhoneNumber(form.phoneCountryCode, form.phoneNumber);
-    if (form.phoneCountryCode === 'BR' && normalizedCellPhone && normalizedCellPhone.length !== 11) {
-      toast.error('Telefone deve conter 11 dígitos (DDD + número)');
+    const phoneValidationError = normalizedCellPhone
+      ? validatePhoneNumber(form.phoneCountryCode, normalizedCellPhone)
+      : null;
+    if (phoneValidationError) {
+      setPhoneError(phoneValidationError);
+      toast.error(phoneValidationError);
       return;
     }
+
+    setPhoneError(null);
 
     if (form.gender === GENDER_FEMALE && isMaleOnlyMemberRole(form.role)) {
       toast.error('Essa função só pode ser atribuída a homens');
@@ -339,12 +350,12 @@ export default function Membros() {
       if (form.familyId) body.familyId = Number(form.familyId);
       if (form.birthDate) body.birthDate = form.birthDate;
       body.role = Number(form.role);
-      if (normalizedCellPhone) {
-        body.cellPhone = {
-          countryCode: form.phoneCountryCode,
-          number: normalizedCellPhone,
-        };
-      }
+      body.cellPhone = normalizedCellPhone
+        ? {
+            countryCode: form.phoneCountryCode,
+            number: normalizedCellPhone,
+          }
+        : null;
 
       let memberId = editItem?.id;
 
@@ -659,14 +670,23 @@ export default function Membros() {
                     <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Telefone</label>
                     <input
                       type="text"
+                      required
                       inputMode={form.phoneCountryCode === 'BR' ? 'numeric' : 'text'}
                       pattern={form.phoneCountryCode === 'BR' ? '[0-9]*' : undefined}
                       maxLength={form.phoneCountryCode === 'BR' ? 15 : 24}
                       value={formatPhoneNumber(form.phoneCountryCode, form.phoneNumber)}
-                      onChange={e => setF('phoneNumber', normalizePhoneNumber(form.phoneCountryCode, e.target.value))}
+                      onChange={e => {
+                        setPhoneError(null);
+                        setF('phoneNumber', normalizePhoneNumber(form.phoneCountryCode, e.target.value));
+                      }}
+                      onBlur={() => {
+                        const normalizedValue = normalizePhoneNumber(form.phoneCountryCode, form.phoneNumber);
+                        setPhoneError(normalizedValue ? validatePhoneNumber(form.phoneCountryCode, normalizedValue) : null);
+                      }}
                       className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                       placeholder={form.phoneCountryCode === 'BR' ? '(21) 90000-0000' : 'Telefone internacional'}
                     />
+                    {phoneError && <p className="mt-1 text-xs text-red-400 font-['Nunito']">{phoneError}</p>}
                   </div>
                 </div>
                 <SmartSelect

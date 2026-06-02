@@ -1,3 +1,5 @@
+import { AsYouType, isValidPhoneNumber, type CountryCode } from 'libphonenumber-js';
+
 export interface CountryOption {
   code: string;
   name: string;
@@ -46,14 +48,40 @@ export const formatPostalCode = (countryCode: string, value: string): string => 
 
 export const normalizePhoneNumber = (countryCode: string, value: string): string => {
   if (!value) return '';
-  if (countryCode === 'BR') return value.replace(/\D/g, '').slice(0, 11);
-  return value.replace(/\s+/g, ' ').trim();
+  const digits = value.replace(/\D/g, '');
+  if (countryCode === 'BR') return digits.slice(0, 11);
+  return digits.slice(0, 15);
 };
 
 export const formatPhoneNumber = (countryCode: string, value: string): string => {
-  if (countryCode !== 'BR') return value;
-  const digits = value.replace(/\D/g, '').slice(0, 11);
-  if (digits.length <= 2) return digits;
-  if (digits.length <= 7) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
-  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  const normalized = normalizePhoneNumber(countryCode, value);
+  if (!normalized) return '';
+  return new AsYouType(countryCode as CountryCode).input(normalized);
+};
+
+const COUNTRY_NAME_BY_CODE = new Map(COUNTRY_OPTIONS.map((country) => [country.code, country.name]));
+
+export const getCountryName = (countryCode: string): string => {
+  return COUNTRY_NAME_BY_CODE.get(countryCode) || countryCode;
+};
+
+const BRAZIL_PHONE_PATTERN = /^\d{2}9\d{8}$/;
+
+export const validatePhoneNumber = (countryCode: string, value: string): string | null => {
+  const normalized = normalizePhoneNumber(countryCode, value);
+  if (!normalized) return null;
+
+  if (countryCode === 'BR') {
+    if (!BRAZIL_PHONE_PATTERN.test(normalized)) {
+      return 'O número informado deve estar no padrão (00)90000-0000.';
+    }
+
+    return null;
+  }
+
+  if (!isValidPhoneNumber(normalized, countryCode as CountryCode)) {
+    return `O número informado está fora do padrão de ${getCountryName(countryCode)}.`;
+  }
+
+  return null;
 };

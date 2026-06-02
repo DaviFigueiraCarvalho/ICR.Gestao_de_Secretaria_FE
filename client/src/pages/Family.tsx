@@ -6,7 +6,7 @@ import MultiSmartSelect from '../components/MultiSmartSelect';
 import { useICRAuth } from '../contexts/ICRAuthContext';
 import { buildLocalChurchFallback, getScopeLevel, resolveScopeRestrictions } from '../lib/scope-access';
 import { useICRApi, Family, Church, Cell, Federation, Member, Minister } from '../hooks/useICRApi';
-import { countrySelectItems, DEFAULT_COUNTRY_CODE, formatPhoneNumber, normalizePhoneNumber } from '../lib/country';
+import { countrySelectItems, DEFAULT_COUNTRY_CODE, formatPhoneNumber, normalizePhoneNumber, validatePhoneNumber } from '../lib/country';
 import { settledValue } from '@/lib/utils';
 import {
   GENDER_FEMALE,
@@ -87,6 +87,8 @@ export default function Familias() {
   const [createWomanMember, setCreateWomanMember] = useState(true);
   const [manDraft, setManDraft] = useState<FamilyMemberDraft>(createEmptyFamilyMemberDraft(true));
   const [womanDraft, setWomanDraft] = useState<FamilyMemberDraft>(createEmptyFamilyMemberDraft(true));
+  const [manPhoneError, setManPhoneError] = useState<string | null>(null);
+  const [womanPhoneError, setWomanPhoneError] = useState<string | null>(null);
   const [manMinisterForm, setManMinisterForm] = useState<MinistroInlineForm>(EMPTY_MINISTER_FORM);
   const [saving, setSaving] = useState(false);
   const [page, setPage] = useState(1);
@@ -402,6 +404,14 @@ export default function Familias() {
   };
 
   const createMemberForFamily = async (familyId: number, gender: number, draft: FamilyMemberDraft) => {
+    const normalizedPhone = normalizePhoneNumber(draft.phoneCountryCode, draft.cellPhone);
+    const phoneValidationError = normalizedPhone
+      ? validatePhoneNumber(draft.phoneCountryCode, normalizedPhone)
+      : null;
+    if (phoneValidationError) {
+      throw new Error(phoneValidationError);
+    }
+
     const createdMember = await fetchApi<Member>('/api/members', {
       method: 'POST',
       body: JSON.stringify({
@@ -410,10 +420,10 @@ export default function Familias() {
         gender,
         hasBeenMarried: true,
         birthDate: draft.birthDate || undefined,
-        cellPhone: draft.cellPhone
+        cellPhone: normalizedPhone
           ? {
               countryCode: draft.phoneCountryCode,
-              number: draft.cellPhone,
+              number: normalizedPhone,
             }
           : undefined,
         role: Number(draft.role || 0),
@@ -440,6 +450,33 @@ export default function Familias() {
       toast.error('Você não tem permissão para usar esta igreja.');
       return;
     }
+
+    if (!editItem) {
+      if (createManMember) {
+        const normalizedManPhone = normalizePhoneNumber(manDraft.phoneCountryCode, manDraft.cellPhone);
+        const nextManPhoneError = normalizedManPhone
+          ? validatePhoneNumber(manDraft.phoneCountryCode, normalizedManPhone)
+          : null;
+        if (nextManPhoneError) {
+          setManPhoneError(nextManPhoneError);
+          return;
+        }
+      }
+
+      if (createWomanMember) {
+        const normalizedWomanPhone = normalizePhoneNumber(womanDraft.phoneCountryCode, womanDraft.cellPhone);
+        const nextWomanPhoneError = normalizedWomanPhone
+          ? validatePhoneNumber(womanDraft.phoneCountryCode, normalizedWomanPhone)
+          : null;
+        if (nextWomanPhoneError) {
+          setWomanPhoneError(nextWomanPhoneError);
+          return;
+        }
+      }
+    }
+
+    setManPhoneError(null);
+    setWomanPhoneError(null);
 
     if (!editItem) {
       if (createManMember && !manDraft.name.trim()) {
@@ -480,8 +517,20 @@ export default function Familias() {
           throw new Error('Falha ao obter ID da família criada');
         }
 
-        const createdManId = createManMember ? await createMemberForFamily(familyId, 1, manDraft) : undefined;
-        const createdWomanId = createWomanMember ? await createMemberForFamily(familyId, 2, womanDraft) : undefined;
+        let createdManId: number | undefined;
+        let createdWomanId: number | undefined;
+        try {
+          createdManId = createManMember ? await createMemberForFamily(familyId, 1, manDraft) : undefined;
+          createdWomanId = createWomanMember ? await createMemberForFamily(familyId, 2, womanDraft) : undefined;
+        } catch (memberErr) {
+          // Rollback: remove the family if member creation failed to avoid partial data
+          try {
+            await fetchApi(`/api/families/${familyId}`, { method: 'DELETE' });
+          } catch (deleteErr) {
+            console.error('Falha ao excluir família após erro na criação de membros:', deleteErr);
+          }
+          throw memberErr;
+        }
 
         if (createdManId && shouldAutoCreateMinister(manDraft.role)) {
           const ministerResult = await saveMinisterForMember(createdManId);
@@ -731,11 +780,16 @@ export default function Familias() {
                         <input
                           type="text"
                           value={formatPhoneNumber(manDraft.phoneCountryCode, manDraft.cellPhone)}
-                          onChange={(event) => setManDraft((prev) => ({ ...prev, cellPhone: normalizePhoneNumber(prev.phoneCountryCode, event.target.value) }))}
+                          onChange={(event) => {
+                            setManPhoneError(null);
+                            setManDraft((prev) => ({ ...prev, cellPhone: normalizePhoneNumber(prev.phoneCountryCode, event.target.value) }));
+                          }}
+                          onBlur={() => setManPhoneError(validatePhoneNumber(manDraft.phoneCountryCode, manDraft.cellPhone))}
                           disabled={!createManMember}
                           className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
                           placeholder="Opcional"
                         />
+                        {manPhoneError && <p className="mt-1 text-xs text-red-400 font-['Nunito']">{manPhoneError}</p>}
                       </div>
                       <div className="md:col-span-6">
                         <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Nascimento</label>
@@ -934,11 +988,16 @@ export default function Familias() {
                         <input
                           type="text"
                           value={formatPhoneNumber(womanDraft.phoneCountryCode, womanDraft.cellPhone)}
-                          onChange={(event) => setWomanDraft((prev) => ({ ...prev, cellPhone: normalizePhoneNumber(prev.phoneCountryCode, event.target.value) }))}
+                          onChange={(event) => {
+                            setWomanPhoneError(null);
+                            setWomanDraft((prev) => ({ ...prev, cellPhone: normalizePhoneNumber(prev.phoneCountryCode, event.target.value) }));
+                          }}
+                          onBlur={() => setWomanPhoneError(validatePhoneNumber(womanDraft.phoneCountryCode, womanDraft.cellPhone))}
                           disabled={!createWomanMember}
                           className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
                           placeholder="Opcional"
                         />
+                        {womanPhoneError && <p className="mt-1 text-xs text-red-400 font-['Nunito']">{womanPhoneError}</p>}
                       </div>
                       <div className="md:col-span-6">
                         <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Nascimento</label>
