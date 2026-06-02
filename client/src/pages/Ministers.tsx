@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import ICRLayout from '../components/ICRLayout';
 import CRUDTable, { Column } from '../components/CRUDTable';
 import SmartSelect from '../components/SmartSelect';
@@ -115,23 +115,27 @@ export default function Ministros() {
       }
     };
 
-    // Funções auxiliares para colar datas de forma segura
-    const handlePasteDate = async (fieldName: string) => {
+    // Funções auxiliares para colar datas de forma segura - cada handler é independente
+    const handlePasteDate = React.useCallback(async (fieldName: string) => {
       try {
         const text = await navigator.clipboard.readText();
         const { parseDateString } = await import('@/lib/date-utils');
         const parsedDate = parseDateString(text);
         if (parsedDate) {
-          setForm((prev) => ({ ...prev, [fieldName]: parsedDate }));
+          // Garante que APENAS este campo é atualizado, preservando todos os outros
+          setForm((prev) => {
+            // Retorna um novo objeto com todos os campos anteriores + campo atualizado
+            return { ...prev, [fieldName]: parsedDate };
+          });
         }
       } catch (err) {
         console.error('Erro ao colar data:', err);
       }
-    };
+    }, []);
 
-    const handleCardValidityPaste = () => handlePasteDate('cardValidity');
-    const handlePresbiterPaste = () => handlePasteDate('presbiterOrdinationDate');
-    const handlePastorPaste = () => handlePasteDate('ministerOrdinationDate');
+    const handleCardValidityPaste = React.useCallback(() => handlePasteDate('cardValidity'), [handlePasteDate]);
+    const handlePresbiterPaste = React.useCallback(() => handlePasteDate('presbiterOrdinationDate'), [handlePasteDate]);
+    const handlePastorPaste = React.useCallback(() => handlePasteDate('ministerOrdinationDate'), [handlePasteDate]);
 
   useEffect(() => { load(); }, []);
 

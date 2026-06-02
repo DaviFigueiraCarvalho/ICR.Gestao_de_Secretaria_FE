@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import ICRLayout from '../components/ICRLayout';
 import CRUDTable, { Column } from '../components/CRUDTable';
 import SmartSelect from '../components/SmartSelect';
@@ -167,33 +167,40 @@ export default function Familias() {
     }
   };
 
-  // Funções auxiliares para colar datas de forma segura
-  const handlePasteDate = async (
-    setter: (fn: (prev: any) => any) => void,
-    fieldName: string,
-  ) => {
-    try {
-      const text = await navigator.clipboard.readText();
-      const { parseDateString } = await import('@/lib/date-utils');
-      const parsedDate = parseDateString(text);
-      if (parsedDate) {
-        setter((prev: any) => ({ ...prev, [fieldName]: parsedDate }));
+  // Funções auxiliares para colar datas de forma segura - cada handler é independente
+  const handlePasteDate = React.useCallback(
+    async (
+      setter: (fn: (prev: any) => any) => void,
+      fieldName: string,
+    ) => {
+      try {
+        const text = await navigator.clipboard.readText();
+        const { parseDateString } = await import('@/lib/date-utils');
+        const parsedDate = parseDateString(text);
+        if (parsedDate) {
+          // Garante que APENAS este campo é atualizado, preservando todos os outros
+          setter((prev: any) => {
+            // Retorna um novo objeto com todos os campos anteriores + campo atualizado
+            return { ...prev, [fieldName]: parsedDate };
+          });
+        }
+      } catch (err) {
+        console.error('Erro ao colar data:', err);
       }
-    } catch (err) {
-      console.error('Erro ao colar data:', err);
-    }
-  };
+    },
+    []
+  );
 
-  const handleManBirthDatePaste = () => handlePasteDate(setManDraft, 'birthDate');
-  const handleWomanBirthDatePaste = () => handlePasteDate(setWomanDraft, 'birthDate');
+  const handleManBirthDatePaste = React.useCallback(() => handlePasteDate(setManDraft, 'birthDate'), [handlePasteDate]);
+  const handleWomanBirthDatePaste = React.useCallback(() => handlePasteDate(setWomanDraft, 'birthDate'), [handlePasteDate]);
 
-  const handleManMinisterCardValidityPaste = () => handlePasteDate(setManMinisterForm, 'cardValidity');
-  const handleManMinisterPresbiterPaste = () => handlePasteDate(setManMinisterForm, 'presbiterOrdinationDate');
-  const handleManMinisterPastorPaste = () => handlePasteDate(setManMinisterForm, 'ministerOrdinationDate');
+  const handleManMinisterCardValidityPaste = React.useCallback(() => handlePasteDate(setManMinisterForm, 'cardValidity'), [handlePasteDate]);
+  const handleManMinisterPresbiterPaste = React.useCallback(() => handlePasteDate(setManMinisterForm, 'presbiterOrdinationDate'), [handlePasteDate]);
+  const handleManMinisterPastorPaste = React.useCallback(() => handlePasteDate(setManMinisterForm, 'ministerOrdinationDate'), [handlePasteDate]);
 
-  const handleWomanMinisterCardValidityPaste = () => handlePasteDate(setWomanMinisterForm, 'cardValidity');
-  const handleWomanMinisterPresbiterPaste = () => handlePasteDate(setWomanMinisterForm, 'presbiterOrdinationDate');
-  const handleWomanMinisterPastorPaste = () => handlePasteDate(setWomanMinisterForm, 'ministerOrdinationDate');
+  const handleWomanMinisterCardValidityPaste = React.useCallback(() => handlePasteDate(setWomanMinisterForm, 'cardValidity'), [handlePasteDate]);
+  const handleWomanMinisterPresbiterPaste = React.useCallback(() => handlePasteDate(setWomanMinisterForm, 'presbiterOrdinationDate'), [handlePasteDate]);
+  const handleWomanMinisterPastorPaste = React.useCallback(() => handlePasteDate(setWomanMinisterForm, 'ministerOrdinationDate'), [handlePasteDate]);
 
   const saveMinisterForMember = async (memberId: number, ministerFormData: MinistroInlineForm) => {
     const hasAddress = ministerFormData.zipCode || ministerFormData.street || ministerFormData.number || ministerFormData.city || ministerFormData.state;

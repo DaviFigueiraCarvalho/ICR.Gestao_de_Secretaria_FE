@@ -26,6 +26,8 @@ export const DateInputWithPaste = React.forwardRef<
       showPasteButton = true,
       onDateParsed,
       className,
+      value,
+      onChange,
       ...props
     },
     ref
@@ -34,21 +36,23 @@ export const DateInputWithPaste = React.forwardRef<
 
     React.useImperativeHandle(ref, () => inputRef.current as HTMLInputElement);
 
-    const handlePaste = async () => {
+    const handlePaste = React.useCallback(async () => {
       try {
         const text = await navigator.clipboard.readText();
         const parsedDate = parseDateString(text);
 
-        if (parsedDate && inputRef.current) {
-          inputRef.current.value = parsedDate;
-          const event = new Event('change', { bubbles: true });
-          inputRef.current.dispatchEvent(event);
+        if (parsedDate && onChange) {
+          // Dispara o onChange do React com o valor parseado
+          const event = {
+            target: { value: parsedDate },
+          } as any;
+          onChange(event);
           onDateParsed?.(parsedDate);
         }
       } catch (err) {
         console.error('Erro ao colar da clipboard:', err);
       }
-    };
+    }, [onChange, onDateParsed]);
 
     return (
       <div className="flex flex-col gap-1">
@@ -61,6 +65,8 @@ export const DateInputWithPaste = React.forwardRef<
           <input
             ref={inputRef}
             type="date"
+            value={value}
+            onChange={onChange}
             className={`flex-1 bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] ${
               error ? 'border-red-500' : ''
             } ${className || ''}`}
