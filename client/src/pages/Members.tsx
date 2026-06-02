@@ -8,6 +8,7 @@ import { buildLocalChurchFallback, getScopeLevel, resolveScopeRestrictions } fro
 import { useICRApi, Member, Family, Church, Cell, Federation, Minister } from '../hooks/useICRApi';
 import { settledValue } from '@/lib/utils';
 import { useViaCEP } from '../hooks/useViaCEP';
+import { handleDatePaste } from '../lib/date-utils';
 import { countrySelectItems, DEFAULT_COUNTRY_CODE, formatPhoneNumber, formatPostalCode, normalizePhoneNumber, normalizePostalCode, validatePhoneNumber } from '../lib/country';
 import {
   GENDER_FEMALE,
@@ -45,6 +46,7 @@ interface MinistroInlineForm {
   city: string;
   state: string;
   countyOrRegion: string;
+  isInsured: boolean;
 }
 
 const normalizeCPF = (value: string): string => value.replace(/\D/g, '').slice(0, 11);
@@ -81,6 +83,7 @@ const EMPTY_MINISTER_FORM: MinistroInlineForm = {
   city: '',
   state: '',
   countyOrRegion: '',
+  isInsured: false,
 };
 
 export default function Membros() {
@@ -94,7 +97,7 @@ export default function Membros() {
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState<Member | null>(null);
   const [form, setForm] = useState<MembroForm>({
-    name: '', familyId: '', gender: 1, birthDate: '', hasBeenMarried: false, role: '', phoneCountryCode: DEFAULT_COUNTRY_CODE, phoneNumber: '',
+    name: '', familyId: '', gender: 1, birthDate: '', hasBeenMarried: false, role: '', phoneCountryCode: DEFAULT_COUNTRY_CODE, phoneNumber: '', postalCode: '', street: '', number: '', city: '', state: '',
   });
   const [ministerForm, setMinisterForm] = useState<MinistroInlineForm>(EMPTY_MINISTER_FORM);
   const [saving, setSaving] = useState(false);
@@ -112,6 +115,8 @@ export default function Membros() {
   const [selectedChurchIds, setSelectedChurchIds] = useState<number[]>([]);
   const [selectedCellIds, setSelectedCellIds] = useState<number[]>([]);
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
+  const [showMinisterEditModal, setShowMinisterEditModal] = useState(false);
+  const [selectedMinister, setSelectedMinister] = useState<Minister | null>(null);
   const scopeLevel = getScopeLevel(user?.scope, user?.username);
   const isLocalScope = scopeLevel === 'local';
   const isFederatedScope = scopeLevel === 'federated';
@@ -158,6 +163,7 @@ export default function Membros() {
       cardValidity: ministerForm.cardValidity || undefined,
       presbiterOrdinationDate: ministerForm.presbiterOrdinationDate || undefined,
       ministerOrdinationDate: ministerForm.ministerOrdinationDate || undefined,
+      isInsured: ministerForm.isInsured,
       address: {
         countryCode: ministerForm.countryCode || DEFAULT_COUNTRY_CODE,
         postalCode: ministerForm.postalCode || '',
@@ -389,6 +395,30 @@ export default function Membros() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleUpdateMinisterInsurance = async () => {
+    if (!selectedMinister?.id) return;
+    
+    setSaving(true);
+    try {
+      await fetchApi(`/api/ministers/${selectedMinister.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ isInsured: selectedMinister.isInsured }),
+      });
+      toast.success('Status de segurado atualizado com sucesso');
+      setShowMinisterEditModal(false);
+      load();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Erro ao atualizar status de segurado');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openMinisterEditModal = (minister: Minister) => {
+    setSelectedMinister({ ...minister });
+    setShowMinisterEditModal(true);
   };
 
   const handleDelete = async (item: Member) => {
@@ -654,7 +684,7 @@ export default function Membros() {
                   </div>
                   <div>
                     <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Data de Nascimento</label>
-                    <input type="date" max={todayDate} value={form.birthDate} onChange={e => setF('birthDate', e.target.value)}
+                    <input type="date" max={todayDate} value={form.birthDate} onChange={e => setF('birthDate', e.target.value)} onPaste={handleDatePaste}
                       className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]" />
                   </div>
                 </div>
@@ -745,6 +775,7 @@ export default function Membros() {
                         type="date"
                         value={ministerForm.cardValidity}
                         onChange={(e) => setMinisterF('cardValidity', e.target.value)}
+                        onPaste={handleDatePaste}
                         className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                       />
                     </div>
@@ -755,6 +786,7 @@ export default function Membros() {
                         max={todayDate}
                         value={ministerForm.presbiterOrdinationDate}
                         onChange={(e) => setMinisterF('presbiterOrdinationDate', e.target.value)}
+                        onPaste={handleDatePaste}
                         className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                       />
                     </div>
@@ -766,6 +798,7 @@ export default function Membros() {
                           max={todayDate}
                           value={ministerForm.ministerOrdinationDate}
                           onChange={(e) => setMinisterF('ministerOrdinationDate', e.target.value)}
+                          onPaste={handleDatePaste}
                           className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
                         />
                       </div>
@@ -864,7 +897,7 @@ export default function Membros() {
                 </div>
               )}
 
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-3 mt-4">
                 <input type="checkbox" id="hasBeenMarried" checked={form.hasBeenMarried}
                   onChange={e => setF('hasBeenMarried', e.target.checked)}
                   className="w-4 h-4 accent-[#017158]" />

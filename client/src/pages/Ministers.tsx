@@ -11,6 +11,7 @@ import { countrySelectItems, DEFAULT_COUNTRY_CODE, formatPostalCode, normalizePo
 import { toast } from 'sonner';
 import { getMinisterCoverageBadgeClass, getMinisterCoverageLabel, resolveMinisterCoverageStatus, summarizeMinisterCoverage } from '../lib/minister-coverage';
 import { useMemo } from 'react';
+import { useSharedMinisterData } from '../hooks/useSharedMinisterData';
 
 interface MinistroForm {
   memberId: number | '';
@@ -53,6 +54,7 @@ export default function Ministros() {
   const [error, setError] = useState<string | null>(null);
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState<Minister | null>(null);
+  const [insurance, setInsurance] = useState(false);
   const [form, setForm] = useState<MinistroForm>({
     memberId: '', cpf: '', email: '', cardValidity: '',
     presbiterOrdinationDate: '', ministerOrdinationDate: '',
@@ -62,6 +64,7 @@ export default function Ministros() {
   const [members, setMembers] = useState<Member[]>([]);
   const [selectedMinister, setSelectedMinister] = useState<Minister | null>(null);
   const handledPrefillRef = useRef<string | null>(null);
+  const { data: sharedData, reload: reloadShared, invalidate: invalidateShared, isLoading: sharedLoading, error: sharedError } = useSharedMinisterData();
   const selectedMember = members.find((member) => member.id === form.memberId);
   const isSelectedMemberPresbitero = getMemberRoleValue(selectedMember?.role) === PRESBITERO_ROLE;
 
@@ -82,6 +85,7 @@ export default function Ministros() {
 
       setData(Array.isArray(ministersResult.value) ? ministersResult.value : []);
       setMembers(settledValue(membersResult) ?? []);
+      invalidateShared();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar ministros');
     } finally {
@@ -157,12 +161,14 @@ export default function Ministros() {
 
   const openAdd = (memberId?: number) => {
     setEditItem(null);
+    setInsurance(false);
     setForm({ memberId: memberId ?? '', cpf: '', email: '', cardValidity: '', presbiterOrdinationDate: '', ministerOrdinationDate: '', countryCode: DEFAULT_COUNTRY_CODE, postalCode: '', street: '', number: '', complement: '', city: '', state: '', countyOrRegion: '' });
     setShowModal(true);
   };
 
   const openEdit = (item: Minister) => {
     setEditItem(item);
+    setInsurance(item.insurance ?? item.insured ?? item.isInsured ?? item.segurado ?? false);
     setForm({
       memberId: item.memberId || '',
       cpf: item.cpf || '',
@@ -213,6 +219,7 @@ export default function Ministros() {
           state: form.state,
           countyOrRegion: form.countyOrRegion,
         },
+        insurance: insurance
       };
       if (editItem) {
         await fetchApi(`/api/ministers/${editItem.id}`, { method: 'PATCH', body: JSON.stringify(body) });
@@ -435,7 +442,23 @@ export default function Ministros() {
                     <input type="date" max={todayDate} value={form.ministerOrdinationDate} onChange={e => setF('ministerOrdinationDate', e.target.value)}
                       className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]" />
                   </div>
-                )}
+                  
+                )}{editItem && (
+  <div className="col-span-2">
+    <label className="flex items-center gap-3 rounded-lg border border-white/10 p-3 cursor-pointer">
+      <input
+        type="checkbox"
+        checked={insurance}
+        onChange={(e) => setInsurance(e.target.checked)}
+        className="h-4 w-4 accent-[#017158]"
+      />
+
+      <span className="text-white font-['Nunito']">
+        Segurado
+      </span>
+    </label>
+  </div>
+)}
               </div>
 
               <div className="border-t border-white/10 pt-4">

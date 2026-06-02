@@ -3,9 +3,11 @@ import { jsPDF } from 'jspdf';
 import ICRLayout from '../components/ICRLayout';
 import { useICRApi, Minister } from '../hooks/useICRApi';
 import { getMinisterCoverageBadgeClass, getMinisterCoverageLabel, resolveMinisterCoverageStatus, summarizeMinisterCoverage } from '../lib/minister-coverage';
+import { useSharedMinisterData } from '../hooks/useSharedMinisterData';
 
 export default function MinistersInsurance() {
   const { fetchApi } = useICRApi();
+  const { data: sharedData, isLoading: sharedLoading, error: sharedError } = useSharedMinisterData();
   const [data, setData] = useState<Minister[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -15,31 +17,10 @@ export default function MinistersInsurance() {
   const blobUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
-    let active = true;
-
-    const load = async () => {
-      setIsLoading(true);
-      setError(null);
-
-      try {
-        const response = await fetchApi<Minister[]>('/api/ministers?page=1&pageSize=200');
-        if (!active) return;
-        setData(Array.isArray(response) ? response : []);
-      } catch (err) {
-        if (!active) return;
-        setError(err instanceof Error ? err.message : 'Erro ao carregar seguro de ministros');
-      } finally {
-        if (!active) return;
-        setIsLoading(false);
-      }
-    };
-
-    load();
-
-    return () => {
-      active = false;
-    };
-  }, [fetchApi]);
+    setData(sharedData);
+    setIsLoading(sharedLoading);
+    setError(sharedError);
+  }, [sharedData, sharedLoading, sharedError]);
 
   const summary = useMemo(() => summarizeMinisterCoverage(data), [data]);
 
@@ -57,7 +38,18 @@ export default function MinistersInsurance() {
 
     return `Vitória, ${formatted}`;
   };
+const getPhoneDisplay = (
+  phone?: Minister['memberPhone']
+) => {
+  if (!phone) return '-';
 
+  return (
+    phone.displayFormat ||
+    phone.internationalFormat ||
+    phone.number ||
+    '-'
+  );
+};
   const normalizePdfText = (value: unknown): string => {
     return String(value ?? '')
       .replace(/\s+/g, ' ')
@@ -399,7 +391,7 @@ export default function MinistersInsurance() {
                         </p>
                       </div>
                       <div className="pr-3">{minister.cpf || '-'}</div>
-                      <div className="pr-3">{minister.memberPhone || minister.member?.cellPhone || '-'}</div>
+                      <div className="pr-3">  {getPhoneDisplay(minister.memberPhone || minister.member?.cellPhone)}</div>                      
                       <div className="pr-3 break-words">{minister.email || '-'}</div>
                       <div className="pr-3">{minister.memberBirthday ? new Date(minister.memberBirthday).toLocaleDateString('pt-BR') : '-'}</div>
                     </div>

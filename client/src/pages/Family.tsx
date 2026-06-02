@@ -8,6 +8,8 @@ import { buildLocalChurchFallback, getScopeLevel, resolveScopeRestrictions } fro
 import { useICRApi, Family, Church, Cell, Federation, Member, Minister } from '../hooks/useICRApi';
 import { countrySelectItems, DEFAULT_COUNTRY_CODE, formatPhoneNumber, normalizePhoneNumber, validatePhoneNumber } from '../lib/country';
 import { settledValue } from '@/lib/utils';
+import { handleDatePaste } from '../lib/date-utils';
+import { useViaCEP } from '../hooks/useViaCEP';
 import {
   GENDER_FEMALE,
   GENDER_MALE,
@@ -47,6 +49,7 @@ interface MinistroInlineForm {
   number: string;
   city: string;
   state: string;
+  isInsured: boolean;
 }
 
 const EMPTY_MINISTER_FORM: MinistroInlineForm = {
@@ -60,6 +63,7 @@ const EMPTY_MINISTER_FORM: MinistroInlineForm = {
   number: '',
   city: '',
   state: '',
+  isInsured: false,
 };
 
 const createEmptyFamilyMemberDraft = (enabled = true): FamilyMemberDraft => ({
@@ -74,6 +78,7 @@ const createEmptyFamilyMemberDraft = (enabled = true): FamilyMemberDraft => ({
 export default function Familias() {
   const { fetchApi } = useICRApi();
   const { user } = useICRAuth();
+  const { fetchCEP } = useViaCEP();
   const todayDate = new Date().toISOString().split('T')[0];
   const [data, setData] = useState<Family[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -168,6 +173,7 @@ export default function Familias() {
       cardValidity: manMinisterForm.cardValidity || undefined,
       presbiterOrdinationDate: manMinisterForm.presbiterOrdinationDate || undefined,
       ministerOrdinationDate: manMinisterForm.ministerOrdinationDate || undefined,
+      isInsured: manMinisterForm.isInsured,
       address: {
         zipCode: manMinisterForm.zipCode || '',
         street: manMinisterForm.street || '',
@@ -732,7 +738,7 @@ export default function Familias() {
               </div>
               <div>
                 <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Data de Casamento</label>
-                <input type="date" max={todayDate} value={form.weddingDate} onChange={e => setF('weddingDate', e.target.value)}
+                <input type="date" max={todayDate} value={form.weddingDate} onChange={e => setF('weddingDate', e.target.value)} onPaste={handleDatePaste}
                   className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]" />
               </div>
 
@@ -797,6 +803,7 @@ export default function Familias() {
                           type="date"
                           value={manDraft.birthDate}
                           onChange={(event) => setManDraft((prev) => ({ ...prev, birthDate: event.target.value }))}
+                          onPaste={handleDatePaste}
                           disabled={!createManMember}
                           className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
                         />
@@ -855,6 +862,7 @@ export default function Familias() {
                               type="date"
                               value={manMinisterForm.cardValidity}
                               onChange={(event) => setManMinisterForm((prev) => ({ ...prev, cardValidity: event.target.value }))}
+                              onPaste={handleDatePaste}
                               disabled={!createManMember}
                               className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
                             />
@@ -865,6 +873,7 @@ export default function Familias() {
                               type="date"
                               value={manMinisterForm.presbiterOrdinationDate}
                               onChange={(event) => setManMinisterForm((prev) => ({ ...prev, presbiterOrdinationDate: event.target.value }))}
+                              onPaste={handleDatePaste}
                               disabled={!createManMember}
                               className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
                             />
@@ -875,6 +884,7 @@ export default function Familias() {
                               type="date"
                               value={manMinisterForm.ministerOrdinationDate}
                               onChange={(event) => setManMinisterForm((prev) => ({ ...prev, ministerOrdinationDate: event.target.value }))}
+                              onPaste={handleDatePaste}
                               disabled={!createManMember || manDraft.role === PRESBITERO_ROLE}
                               className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
                             />
@@ -1005,6 +1015,7 @@ export default function Familias() {
                           type="date"
                           value={womanDraft.birthDate}
                           onChange={(event) => setWomanDraft((prev) => ({ ...prev, birthDate: event.target.value }))}
+                          onPaste={handleDatePaste}
                           disabled={!createWomanMember}
                           className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
                         />

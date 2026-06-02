@@ -111,3 +111,7 @@ temp/
 scripts/fix_churchs_path.cjs
 scripts/patch_churchs.cjs
 scripts/patch_churchs.js
+.env.example
+.gitignore
+DOCKER.md
+/.vs

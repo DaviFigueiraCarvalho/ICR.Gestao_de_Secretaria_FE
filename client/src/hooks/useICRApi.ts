@@ -180,6 +180,7 @@ export interface Minister {
   presbiterOrdinationDate?: string;
   ministerOrdinationDate?: string;
   member?: Member;
+  insurance?: boolean;
   insured?: boolean;
   eligible?: boolean;
   isInsured?: boolean;

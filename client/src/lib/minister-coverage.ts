@@ -58,7 +58,7 @@ export const resolveMinisterCoverageStatus = (minister: Minister): MinisterCover
     return 'uncovered';
   }
 
-  const explicitInsured = parseBoolean(minister.insured ?? minister.isInsured ?? minister.segurado);
+  const explicitInsured = parseBoolean(minister.insurance ?? minister.insured ?? minister.isInsured ?? minister.segurado);
   if (explicitInsured === true) return 'covered';
   if (explicitInsured === false) return 'uncovered';
 

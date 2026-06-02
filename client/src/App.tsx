@@ -5,6 +5,7 @@ import { canAccessPathByScope, getScopeLevel } from "./lib/scope-access";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { ICRAuthProvider, useICRAuth } from "./contexts/ICRAuthContext";
+import { MinisterDataProvider } from "./hooks/useSharedMinisterData";
 import Login from "./pages/Login";
 import Home from "./pages/Home";
 import Federacoes from "./pages/Federations";
@@ -91,10 +92,12 @@ function App() {
     <ErrorBoundary>
       <ThemeProvider defaultTheme="dark" defaultMode="system" switchable>
         <ICRAuthProvider>
-          <TooltipProvider>
-            <Toaster position="top-right" />
-            <Router />
-          </TooltipProvider>
+          <MinisterDataProvider>
+            <TooltipProvider>
+              <Toaster position="top-right" />
+              <Router />
+            </TooltipProvider>
+          </MinisterDataProvider>
         </ICRAuthProvider>
       </ThemeProvider>
     </ErrorBoundary>
