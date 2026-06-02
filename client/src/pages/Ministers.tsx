@@ -97,23 +97,41 @@ export default function Ministros() {
     const normalizedPostalCode = normalizePostalCode(form.countryCode, value);
     setForm(prev => ({ ...prev, postalCode: normalizedPostalCode }));
     
-    if (form.countryCode !== 'BR') return;
+       if (form.countryCode !== 'BR') return;
 
-    const cleanCEP = normalizedPostalCode;
-    if (cleanCEP.length === 8) {
-      const cepData = await fetchCEP(value);
-      if (cepData) {
-        setForm(prev => ({
-          ...prev,
-          street: cepData.street,
-          city: cepData.city,
-          state: cepData.state,
-          // Mantém o número como estava
-        }));
-        toast.success('Endereço preenchido automaticamente');
+      const cleanCEP = normalizedPostalCode;
+      if (cleanCEP.length === 8) {
+        const cepData = await fetchCEP(value);
+        if (cepData) {
+          setForm(prev => ({
+            ...prev,
+            street: cepData.street,
+            city: cepData.city,
+            state: cepData.state,
+            // Mantém o número como estava
+          }));
+          toast.success('Endereço preenchido automaticamente');
+        }
       }
-    }
-  };
+    };
+
+    // Funções auxiliares para colar datas de forma segura
+    const handlePasteDate = async (fieldName: string) => {
+      try {
+        const text = await navigator.clipboard.readText();
+        const { parseDateString } = await import('@/lib/date-utils');
+        const parsedDate = parseDateString(text);
+        if (parsedDate) {
+          setForm((prev) => ({ ...prev, [fieldName]: parsedDate }));
+        }
+      } catch (err) {
+        console.error('Erro ao colar data:', err);
+      }
+    };
+
+    const handleCardValidityPaste = () => handlePasteDate('cardValidity');
+    const handlePresbiterPaste = () => handlePasteDate('presbiterOrdinationDate');
+    const handlePastorPaste = () => handlePasteDate('ministerOrdinationDate');
 
   useEffect(() => { load(); }, []);
 
@@ -428,22 +446,72 @@ export default function Ministros() {
                 </div>
                 <div>
                   <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Validade Carteira</label>
-                  <input type="date" value={form.cardValidity} onChange={e => setF('cardValidity', e.target.value)}
-                    className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]" />
+                  <div className="flex gap-2">
+                    <input 
+                      type="date" 
+                      value={form.cardValidity} 
+                      onChange={e => setF('cardValidity', e.target.value)}
+                      className="flex-1 bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]" 
+                    />
+                    <button
+                      type="button"
+                      onClick={handleCardValidityPaste}
+                      className="px-3 py-2.5 bg-[#1c1c1c] border border-white/20 rounded-lg hover:border-[#017158] shrink-0"
+                      title="Colar data"
+                    >
+                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2m0 0V3a2 2 0 00-2-2h-2a2 2 0 00-2 2v2z" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
                 <div>
                   <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Ordenação Presbítero</label>
-                  <input type="date" max={todayDate} value={form.presbiterOrdinationDate} onChange={e => setF('presbiterOrdinationDate', e.target.value)}
-                    className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]" />
+                  <div className="flex gap-2">
+                    <input 
+                      type="date" 
+                      max={todayDate} 
+                      value={form.presbiterOrdinationDate} 
+                      onChange={e => setF('presbiterOrdinationDate', e.target.value)}
+                      className="flex-1 bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]" 
+                    />
+                    <button
+                      type="button"
+                      onClick={handlePresbiterPaste}
+                      className="px-3 py-2.5 bg-[#1c1c1c] border border-white/20 rounded-lg hover:border-[#017158] shrink-0"
+                      title="Colar data"
+                    >
+                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2m0 0V3a2 2 0 00-2-2h-2a2 2 0 00-2 2v2z" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
                 {!isSelectedMemberPresbitero && (
                   <div>
                     <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Ordenação a Pastor</label>
-                    <input type="date" max={todayDate} value={form.ministerOrdinationDate} onChange={e => setF('ministerOrdinationDate', e.target.value)}
-                      className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]" />
+                    <div className="flex gap-2">
+                      <input 
+                        type="date" 
+                        max={todayDate} 
+                        value={form.ministerOrdinationDate} 
+                        onChange={e => setF('ministerOrdinationDate', e.target.value)}
+                        className="flex-1 bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]" 
+                      />
+                      <button
+                        type="button"
+                        onClick={handlePastorPaste}
+                        className="px-3 py-2.5 bg-[#1c1c1c] border border-white/20 rounded-lg hover:border-[#017158] shrink-0"
+                        title="Colar data"
+                      >
+                        <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2m0 0V3a2 2 0 00-2-2h-2a2 2 0 00-2 2v2z" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
-                  
-                )}{editItem && (
+
+                )}
   <div className="col-span-2">
     <label className="flex items-center gap-3 rounded-lg border border-white/10 p-3 cursor-pointer">
       <input
@@ -458,7 +526,7 @@ export default function Ministros() {
       </span>
     </label>
   </div>
-)}
+
               </div>
 
               <div className="border-t border-white/10 pt-4">

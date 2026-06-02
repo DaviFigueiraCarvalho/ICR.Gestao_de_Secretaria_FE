@@ -9,6 +9,7 @@ import { useICRApi, Family, Church, Cell, Federation, Member, Minister } from '.
 import { countrySelectItems, DEFAULT_COUNTRY_CODE, formatPhoneNumber, normalizePhoneNumber, validatePhoneNumber } from '../lib/country';
 import { settledValue } from '@/lib/utils';
 import { handleDatePaste } from '../lib/date-utils';
+import { DateInputWithPaste } from '../components/ui/DateInputWithPaste';
 import { useViaCEP } from '../hooks/useViaCEP';
 import {
   GENDER_FEMALE,
@@ -95,6 +96,7 @@ export default function Familias() {
   const [manPhoneError, setManPhoneError] = useState<string | null>(null);
   const [womanPhoneError, setWomanPhoneError] = useState<string | null>(null);
   const [manMinisterForm, setManMinisterForm] = useState<MinistroInlineForm>(EMPTY_MINISTER_FORM);
+  const [womanMinisterForm, setWomanMinisterForm] = useState<MinistroInlineForm>(EMPTY_MINISTER_FORM);
   const [saving, setSaving] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
@@ -165,23 +167,55 @@ export default function Familias() {
     }
   };
 
-  const saveMinisterForMember = async (memberId: number) => {
+  // Funções auxiliares para colar datas de forma segura
+  const handlePasteDate = async (
+    setter: (fn: (prev: any) => any) => void,
+    fieldName: string,
+  ) => {
+    try {
+      const text = await navigator.clipboard.readText();
+      const { parseDateString } = await import('@/lib/date-utils');
+      const parsedDate = parseDateString(text);
+      if (parsedDate) {
+        setter((prev: any) => ({ ...prev, [fieldName]: parsedDate }));
+      }
+    } catch (err) {
+      console.error('Erro ao colar data:', err);
+    }
+  };
+
+  const handleManBirthDatePaste = () => handlePasteDate(setManDraft, 'birthDate');
+  const handleWomanBirthDatePaste = () => handlePasteDate(setWomanDraft, 'birthDate');
+
+  const handleManMinisterCardValidityPaste = () => handlePasteDate(setManMinisterForm, 'cardValidity');
+  const handleManMinisterPresbiterPaste = () => handlePasteDate(setManMinisterForm, 'presbiterOrdinationDate');
+  const handleManMinisterPastorPaste = () => handlePasteDate(setManMinisterForm, 'ministerOrdinationDate');
+
+  const handleWomanMinisterCardValidityPaste = () => handlePasteDate(setWomanMinisterForm, 'cardValidity');
+  const handleWomanMinisterPresbiterPaste = () => handlePasteDate(setWomanMinisterForm, 'presbiterOrdinationDate');
+  const handleWomanMinisterPastorPaste = () => handlePasteDate(setWomanMinisterForm, 'ministerOrdinationDate');
+
+  const saveMinisterForMember = async (memberId: number, ministerFormData: MinistroInlineForm) => {
+    const hasAddress = ministerFormData.zipCode || ministerFormData.street || ministerFormData.number || ministerFormData.city || ministerFormData.state;
+
     const ministerBody: Record<string, unknown> = {
       memberId,
-      cpf: manMinisterForm.cpf || '',
-      email: manMinisterForm.email || '',
-      cardValidity: manMinisterForm.cardValidity || undefined,
-      presbiterOrdinationDate: manMinisterForm.presbiterOrdinationDate || undefined,
-      ministerOrdinationDate: manMinisterForm.ministerOrdinationDate || undefined,
-      isInsured: manMinisterForm.isInsured,
-      address: {
-        zipCode: manMinisterForm.zipCode || '',
-        street: manMinisterForm.street || '',
-        number: manMinisterForm.number || '',
-        city: manMinisterForm.city || '',
-        state: manMinisterForm.state || '',
-      },
+      cpf: ministerFormData.cpf || '',
+      email: ministerFormData.email || '',
+      cardValidity: ministerFormData.cardValidity || null,
+      presbiterOrdinationDate: ministerFormData.presbiterOrdinationDate || null,
+      ministerOrdinationDate: ministerFormData.ministerOrdinationDate || null,
+      isInsured: ministerFormData.isInsured,
+      address: hasAddress ? {
+        postalCode: ministerFormData.zipCode || '',
+        street: ministerFormData.street || '',
+        number: ministerFormData.number || '',
+        city: ministerFormData.city || '',
+        state: ministerFormData.state || '',
+      } : null,
     };
+
+    console.log('🔵 [Family] Enviando ministro:', JSON.stringify(ministerBody, null, 2));
 
     const ministersResult = await fetchApi<Minister[]>('/api/ministers?page=1&pageSize=100').catch(() => []);
     const existingMinister = Array.isArray(ministersResult)
@@ -189,6 +223,7 @@ export default function Familias() {
       : undefined;
 
     if (existingMinister?.id) {
+      console.log('🟡 [Family] Atualizando ministro existente:', existingMinister.id);
       await fetchApi(`/api/ministers/${existingMinister.id}`, {
         method: 'PATCH',
         body: JSON.stringify(ministerBody),
@@ -196,6 +231,7 @@ export default function Familias() {
       return 'updated';
     }
 
+    console.log('🟢 [Family] Criando novo ministro para memberId:', memberId);
     await fetchApi('/api/ministers', {
       method: 'POST',
       body: JSON.stringify(ministerBody),
@@ -298,6 +334,7 @@ export default function Familias() {
     setManDraft(createEmptyFamilyMemberDraft(true));
     setWomanDraft(createEmptyFamilyMemberDraft(true));
     setManMinisterForm(EMPTY_MINISTER_FORM);
+    setWomanMinisterForm(EMPTY_MINISTER_FORM);
     setShowModal(true);
   };
 
@@ -539,11 +576,20 @@ export default function Familias() {
         }
 
         if (createdManId && shouldAutoCreateMinister(manDraft.role)) {
-          const ministerResult = await saveMinisterForMember(createdManId);
+          const ministerResult = await saveMinisterForMember(createdManId, manMinisterForm);
           if (ministerResult === 'created') {
             toast.success('Cadastro de ministro do marido criado no formulario adicional');
           } else {
             toast.success('Cadastro de ministro do marido atualizado no formulario adicional');
+          }
+        }
+
+        if (createdWomanId && shouldAutoCreateMinister(womanDraft.role)) {
+          const ministerResult = await saveMinisterForMember(createdWomanId, womanMinisterForm);
+          if (ministerResult === 'created') {
+            toast.success('Cadastro de ministro da mulher criado no formulario adicional');
+          } else {
+            toast.success('Cadastro de ministro da mulher atualizado no formulario adicional');
           }
         }
 
@@ -720,7 +766,8 @@ export default function Familias() {
                   selectedId={form.churchId}
                   onSelect={(id) => {
                     if (isLocalScope) return;
-                    handleChurchChange(id);
+                    const churchId = typeof id === 'number' ? id : typeof id === 'string' ? parseInt(id) || '' : '';
+                    handleChurchChange(churchId);
                   }}
                   items={scopedChurches.map(c => ({ id: c.id, name: c.name }))}
                   placeholder="Selecione uma igreja"
@@ -736,11 +783,13 @@ export default function Familias() {
                   disabled={!form.churchId}
                 />
               </div>
-              <div>
-                <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Data de Casamento</label>
-                <input type="date" max={todayDate} value={form.weddingDate} onChange={e => setF('weddingDate', e.target.value)} onPaste={handleDatePaste}
-                  className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]" />
-              </div>
+              <DateInputWithPaste
+                label="Data de Casamento"
+                max={todayDate}
+                value={form.weddingDate}
+                onChange={(e) => setF('weddingDate', e.target.value)}
+                showPasteButton={true}
+              />
 
               {!editItem && (
                 <div className="space-y-4 pt-2">
@@ -760,69 +809,93 @@ export default function Familias() {
                         Ativar
                       </label>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3 opacity-100">
-                      <div className="md:col-span-5">
-                        <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Nome do marido *</label>
-                        <input
-                          type="text"
-                          value={manDraft.name}
-                          onChange={(event) => setManDraft((prev) => ({ ...prev, name: event.target.value }))}
-                          disabled={!createManMember}
-                          className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                          placeholder="Nome do marido"
-                        />
+                    <div className="space-y-3">
+                      {/* Primeira linha: Nome, País e Telefone */}
+                      <div className="flex flex-col gap-1">
+                        <div className="flex gap-3 items-start">
+                          <div className="flex-1">
+                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Nome do marido *</label>
+                            <input
+                              type="text"
+                              value={manDraft.name}
+                              onChange={(event) => setManDraft((prev) => ({ ...prev, name: event.target.value }))}
+                              disabled={!createManMember}
+                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                              placeholder="Nome do marido"
+                            />
+                          </div>
+                          <div className="w-40">
+                            <SmartSelect
+                              label="País do telefone"
+                              selectedId={manDraft.phoneCountryCode}
+                              onSelect={(id) => setManDraft((prev) => ({ ...prev, phoneCountryCode: typeof id === 'string' ? id : DEFAULT_COUNTRY_CODE }))}
+                              items={countrySelectItems}
+                              placeholder="Selecione um país"
+                              disabled={!createManMember}
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Telefone</label>
+                            <input
+                              type="text"
+                              value={formatPhoneNumber(manDraft.phoneCountryCode, manDraft.cellPhone)}
+                              onChange={(event) => {
+                                setManPhoneError(null);
+                                setManDraft((prev) => ({ ...prev, cellPhone: normalizePhoneNumber(prev.phoneCountryCode, event.target.value) }));
+                              }}
+                              onBlur={() => setManPhoneError(validatePhoneNumber(manDraft.phoneCountryCode, manDraft.cellPhone))}
+                              disabled={!createManMember}
+                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                              placeholder="Opcional"
+                            />
+                            {manPhoneError && <p className="mt-1 text-xs text-red-400 font-['Nunito']">{manPhoneError}</p>}
+                          </div>
+                        </div>
                       </div>
-                      <SmartSelect
-                        className="md:col-span-2"
-                        label="País do telefone"
-                        selectedId={manDraft.phoneCountryCode}
-                        onSelect={(id) => setManDraft((prev) => ({ ...prev, phoneCountryCode: typeof id === 'string' ? id : DEFAULT_COUNTRY_CODE }))}
-                        items={countrySelectItems}
-                        placeholder="Selecione um país"
-                        disabled={!createManMember}
-                      />
-                      <div className="md:col-span-5">
-                        <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Telefone</label>
-                        <input
-                          type="text"
-                          value={formatPhoneNumber(manDraft.phoneCountryCode, manDraft.cellPhone)}
-                          onChange={(event) => {
-                            setManPhoneError(null);
-                            setManDraft((prev) => ({ ...prev, cellPhone: normalizePhoneNumber(prev.phoneCountryCode, event.target.value) }));
-                          }}
-                          onBlur={() => setManPhoneError(validatePhoneNumber(manDraft.phoneCountryCode, manDraft.cellPhone))}
-                          disabled={!createManMember}
-                          className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                          placeholder="Opcional"
-                        />
-                        {manPhoneError && <p className="mt-1 text-xs text-red-400 font-['Nunito']">{manPhoneError}</p>}
-                      </div>
-                      <div className="md:col-span-6">
-                        <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Nascimento</label>
-                        <input
-                          type="date"
-                          value={manDraft.birthDate}
-                          onChange={(event) => setManDraft((prev) => ({ ...prev, birthDate: event.target.value }))}
-                          onPaste={handleDatePaste}
-                          disabled={!createManMember}
-                          className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                        />
-                      </div>
-                      <div className="md:col-span-6">
-                        <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Função / Cargo</label>
-                        <select
-                          value={manDraft.role}
-                          onChange={(event) => setManDraft((prev) => ({ ...prev, role: event.target.value ? Number(event.target.value) : '' }))}
-                          disabled={!createManMember}
-                          className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                        >
-                          <option value={0}>Sem função</option>
-                          {getMemberRoleOptionsForGender(GENDER_MALE).filter((option) => option.value !== 0).map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
+
+                      {/* Terceira linha: Nascimento, Função/Cargo e espaço */}
+                      <div className="flex flex-col gap-1">
+                        <div className="flex gap-3 items-start">
+                          <div className="flex-1">
+                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Nascimento</label>
+                            <div className="flex gap-2">
+                              <input
+                                type="date"
+                                value={manDraft.birthDate}
+                                onChange={(event) => setManDraft((prev) => ({ ...prev, birthDate: event.target.value }))}
+                                disabled={!createManMember}
+                                className="flex-1 bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                              />
+                              <button
+                                type="button"
+                                onClick={handleManBirthDatePaste}
+                                disabled={!createManMember}
+                                className="px-3 py-2.5 bg-[#1c1c1c] border border-white/20 rounded-lg hover:border-[#017158] disabled:opacity-50 shrink-0"
+                                title="Colar data"
+                              >
+                                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2m0 0V3a2 2 0 00-2-2h-2a2 2 0 00-2 2v2z" />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                          <div className="flex-1">
+                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Função / Cargo</label>
+                            <select
+                              value={manDraft.role}
+                              onChange={(event) => setManDraft((prev) => ({ ...prev, role: event.target.value ? Number(event.target.value) : '' }))}
+                              disabled={!createManMember}
+                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                            >
+                              <option value={0}>Sem função</option>
+                              {getMemberRoleOptionsForGender(GENDER_MALE).filter((option) => option.value !== 0).map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
                       </div>
                     </div>
 
@@ -830,8 +903,8 @@ export default function Familias() {
                       <div className="border-t border-white/10 pt-4 space-y-4">
                         <p className="text-white/50 text-xs font-['Nunito'] uppercase tracking-wider">Dados de Ministro do marido</p>
 
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
+                        <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                          <div className="md:col-span-4">
                             <label className="text-white/70 text-sm font-['Nunito'] block mb-1">CPF</label>
                             <input
                               type="text"
@@ -845,7 +918,7 @@ export default function Familias() {
                               placeholder="000.000.000-00"
                             />
                           </div>
-                          <div>
+                          <div className="md:col-span-8">
                             <label className="text-white/70 text-sm font-['Nunito'] block mb-1">E-mail</label>
                             <input
                               type="email"
@@ -856,38 +929,79 @@ export default function Familias() {
                               placeholder="email@exemplo.com"
                             />
                           </div>
-                          <div>
-                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Validade Carteira</label>
-                            <input
-                              type="date"
-                              value={manMinisterForm.cardValidity}
-                              onChange={(event) => setManMinisterForm((prev) => ({ ...prev, cardValidity: event.target.value }))}
-                              onPaste={handleDatePaste}
-                              disabled={!createManMember}
-                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Ordenação Presbítero</label>
-                            <input
-                              type="date"
-                              value={manMinisterForm.presbiterOrdinationDate}
-                              onChange={(event) => setManMinisterForm((prev) => ({ ...prev, presbiterOrdinationDate: event.target.value }))}
-                              onPaste={handleDatePaste}
-                              disabled={!createManMember}
-                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                            />
-                          </div>
-                          <div className="col-span-2">
-                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Ordenação a Pastor</label>
-                            <input
-                              type="date"
-                              value={manMinisterForm.ministerOrdinationDate}
-                              onChange={(event) => setManMinisterForm((prev) => ({ ...prev, ministerOrdinationDate: event.target.value }))}
-                              onPaste={handleDatePaste}
-                              disabled={!createManMember || manDraft.role === PRESBITERO_ROLE}
-                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                            />
+                        </div>
+
+                        <div className="flex flex-col gap-1">
+                          <div className="flex gap-3 items-start">
+                            <div className="flex-1">
+                              <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Validade Carteira (caso pastor)</label>
+                              <div className="flex gap-2">
+                                <input
+                                  type="date"
+                                  value={manMinisterForm.cardValidity}
+                                  onChange={(event) => setManMinisterForm((prev) => ({ ...prev, cardValidity: event.target.value }))}
+                                  disabled={!createManMember}
+                                  className="flex-1 bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                                />
+                                <button
+                                   type="button"
+                                   onClick={handleManMinisterCardValidityPaste}
+                                   disabled={!createManMember}
+                                   className="px-3 py-2.5 bg-[#1c1c1c] border border-white/20 rounded-lg hover:border-[#017158] disabled:opacity-50 shrink-0"
+                                   title="Colar data"
+                                 >
+                                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2m0 0V3a2 2 0 00-2-2h-2a2 2 0 00-2 2v2z" />
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
+                            <div className="flex-1">
+                              <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Ordenação Presbítero</label>
+                              <div className="flex gap-2">
+                                <input
+                                  type="date"
+                                  value={manMinisterForm.presbiterOrdinationDate}
+                                  onChange={(event) => setManMinisterForm((prev) => ({ ...prev, presbiterOrdinationDate: event.target.value }))}
+                                  disabled={!createManMember}
+                                  className="flex-1 bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                                />
+                                <button
+                                   type="button"
+                                   onClick={handleManMinisterPresbiterPaste}
+                                   disabled={!createManMember}
+                                   className="px-3 py-2.5 bg-[#1c1c1c] border border-white/20 rounded-lg hover:border-[#017158] disabled:opacity-50 shrink-0"
+                                   title="Colar data"
+                                 >
+                                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2m0 0V3a2 2 0 00-2-2h-2a2 2 0 00-2 2v2z" />
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
+                            <div className="flex-1">
+                              <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Ordenação a Pastor</label>
+                              <div className="flex gap-2">
+                                <input
+                                  type="date"
+                                  value={manMinisterForm.ministerOrdinationDate}
+                                  onChange={(event) => setManMinisterForm((prev) => ({ ...prev, ministerOrdinationDate: event.target.value }))}
+                                  disabled={!createManMember || manDraft.role === PRESBITERO_ROLE}
+                                  className="flex-1 bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                                />
+                                <button
+                                   type="button"
+                                   onClick={handleManMinisterPastorPaste}
+                                   disabled={!createManMember || manDraft.role === PRESBITERO_ROLE}
+                                   className="px-3 py-2.5 bg-[#1c1c1c] border border-white/20 rounded-lg hover:border-[#017158] disabled:opacity-50 shrink-0"
+                                   title="Colar data"
+                                 >
+                                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2m0 0V3a2 2 0 00-2-2h-2a2 2 0 00-2 2v2z" />
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
                           </div>
                         </div>
 
@@ -972,71 +1086,264 @@ export default function Familias() {
                         Ativar
                       </label>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
-                      <div className="md:col-span-5">
-                        <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Nome da mulher *</label>
-                        <input
-                          type="text"
-                          value={womanDraft.name}
-                          onChange={(event) => setWomanDraft((prev) => ({ ...prev, name: event.target.value }))}
-                          disabled={!createWomanMember}
-                          className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                          placeholder="Nome da mulher"
-                        />
+                    <div className="space-y-3">
+                      {/* Primeira linha: Nome, País e Telefone */}
+                      <div className="flex flex-col gap-1">
+                        <div className="flex gap-3 items-start">
+                          <div className="flex-1">
+                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Nome da mulher *</label>
+                            <input
+                              type="text"
+                              value={womanDraft.name}
+                              onChange={(event) => setWomanDraft((prev) => ({ ...prev, name: event.target.value }))}
+                              disabled={!createWomanMember}
+                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                              placeholder="Nome da mulher"
+                            />
+                          </div>
+                          <div className="w-40">
+                            <SmartSelect
+                              label="País do telefone"
+                              selectedId={womanDraft.phoneCountryCode}
+                              onSelect={(id) => setWomanDraft((prev) => ({ ...prev, phoneCountryCode: typeof id === 'string' ? id : DEFAULT_COUNTRY_CODE }))}
+                              items={countrySelectItems}
+                              placeholder="Selecione um país"
+                              disabled={!createWomanMember}
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Telefone</label>
+                            <input
+                              type="text"
+                              value={formatPhoneNumber(womanDraft.phoneCountryCode, womanDraft.cellPhone)}
+                              onChange={(event) => {
+                                setWomanPhoneError(null);
+                                setWomanDraft((prev) => ({ ...prev, cellPhone: normalizePhoneNumber(prev.phoneCountryCode, event.target.value) }));
+                              }}
+                              onBlur={() => setWomanPhoneError(validatePhoneNumber(womanDraft.phoneCountryCode, womanDraft.cellPhone))}
+                              disabled={!createWomanMember}
+                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                              placeholder="Opcional"
+                            />
+                            {womanPhoneError && <p className="mt-1 text-xs text-red-400 font-['Nunito']">{womanPhoneError}</p>}
+                          </div>
+                        </div>
                       </div>
-                      <SmartSelect
-                        className="md:col-span-2"
-                        label="País do telefone"
-                        selectedId={womanDraft.phoneCountryCode}
-                        onSelect={(id) => setWomanDraft((prev) => ({ ...prev, phoneCountryCode: typeof id === 'string' ? id : DEFAULT_COUNTRY_CODE }))}
-                        items={countrySelectItems}
-                        placeholder="Selecione um país"
-                        disabled={!createWomanMember}
-                      />
-                      <div className="md:col-span-5">
-                        <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Telefone</label>
-                        <input
-                          type="text"
-                          value={formatPhoneNumber(womanDraft.phoneCountryCode, womanDraft.cellPhone)}
-                          onChange={(event) => {
-                            setWomanPhoneError(null);
-                            setWomanDraft((prev) => ({ ...prev, cellPhone: normalizePhoneNumber(prev.phoneCountryCode, event.target.value) }));
-                          }}
-                          onBlur={() => setWomanPhoneError(validatePhoneNumber(womanDraft.phoneCountryCode, womanDraft.cellPhone))}
-                          disabled={!createWomanMember}
-                          className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                          placeholder="Opcional"
-                        />
-                        {womanPhoneError && <p className="mt-1 text-xs text-red-400 font-['Nunito']">{womanPhoneError}</p>}
-                      </div>
-                      <div className="md:col-span-6">
-                        <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Nascimento</label>
-                        <input
-                          type="date"
-                          value={womanDraft.birthDate}
-                          onChange={(event) => setWomanDraft((prev) => ({ ...prev, birthDate: event.target.value }))}
-                          onPaste={handleDatePaste}
-                          disabled={!createWomanMember}
-                          className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                        />
-                      </div>
-                      <div className="md:col-span-6">
-                        <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Função / Cargo</label>
-                        <select
-                          value={womanDraft.role}
-                          onChange={(event) => setWomanDraft((prev) => ({ ...prev, role: event.target.value ? Number(event.target.value) : '' }))}
-                          disabled={!createWomanMember}
-                          className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                        >
-                          <option value={0}>Sem função</option>
-                          {getMemberRoleOptionsForGender(GENDER_FEMALE).filter((option) => option.value !== 0).map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
+
+                      {/* Segunda linha: Nascimento e Função/Cargo */}
+                      <div className="flex flex-col gap-1">
+                        <div className="flex gap-3 items-start">
+                          <div className="flex-1">
+                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Nascimento</label>
+                            <div className="flex gap-2">
+                              <input
+                                type="date"
+                                value={womanDraft.birthDate}
+                                onChange={(event) => setWomanDraft((prev) => ({ ...prev, birthDate: event.target.value }))}
+                                disabled={!createWomanMember}
+                                className="flex-1 bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                              />
+                              <button
+                                type="button"
+                                onClick={handleWomanBirthDatePaste}
+                                disabled={!createWomanMember}
+                                className="px-3 py-2.5 bg-[#1c1c1c] border border-white/20 rounded-lg hover:border-[#017158] disabled:opacity-50 shrink-0"
+                                title="Colar data"
+                              >
+                                <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2m0 0V3a2 2 0 00-2-2h-2a2 2 0 00-2 2v2z" />
+                                </svg>
+                              </button>
+                            </div>
+                          </div>
+                          <div className="flex-1">
+                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Função / Cargo</label>
+                            <select
+                              value={womanDraft.role}
+                              onChange={(event) => setWomanDraft((prev) => ({ ...prev, role: event.target.value ? Number(event.target.value) : '' }))}
+                              disabled={!createWomanMember}
+                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                            >
+                              <option value={0}>Sem função</option>
+                              {getMemberRoleOptionsForGender(GENDER_FEMALE).filter((option) => option.value !== 0).map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
                       </div>
                     </div>
+
+                    {shouldAutoCreateMinister(womanDraft.role) && (
+                      <div className="border-t border-white/10 pt-4 space-y-4">
+                        <p className="text-white/50 text-xs font-['Nunito'] uppercase tracking-wider">Dados de Ministro da mulher</p>
+
+                        <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
+                          <div className="md:col-span-4">
+                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">CPF</label>
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
+                              maxLength={14}
+                              value={formatCPF(womanMinisterForm.cpf)}
+                              onChange={(event) => setWomanMinisterForm((prev) => ({ ...prev, cpf: normalizeCPF(event.target.value) }))}
+                              disabled={!createWomanMember}
+                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                              placeholder="000.000.000-00"
+                            />
+                          </div>
+                          <div className="md:col-span-8">
+                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">E-mail</label>
+                            <input
+                              type="email"
+                              value={womanMinisterForm.email}
+                              onChange={(event) => setWomanMinisterForm((prev) => ({ ...prev, email: event.target.value }))}
+                              disabled={!createWomanMember}
+                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                              placeholder="email@example.com"
+                            />
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-1">
+                          <div className="flex gap-3 items-start">
+                            <div className="flex-1">
+                              <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Validade Carteira (caso pastora)</label>
+                              <div className="flex gap-2">
+                                <input
+                                  type="date"
+                                  value={womanMinisterForm.cardValidity}
+                                  onChange={(event) => setWomanMinisterForm((prev) => ({ ...prev, cardValidity: event.target.value }))}
+                                  disabled={!createWomanMember}
+                                  className="flex-1 bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                                />
+                                <button
+                                   type="button"
+                                   onClick={handleWomanMinisterCardValidityPaste}
+                                   disabled={!createWomanMember}
+                                   className="px-3 py-2.5 bg-[#1c1c1c] border border-white/20 rounded-lg hover:border-[#017158] disabled:opacity-50 shrink-0"
+                                   title="Colar data"
+                                 >
+                                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2m0 0V3a2 2 0 00-2-2h-2a2 2 0 00-2 2v2z" />
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
+                            <div className="flex-1">
+                              <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Ordenação Presbítero</label>
+                              <div className="flex gap-2">
+                                <input
+                                  type="date"
+                                  value={womanMinisterForm.presbiterOrdinationDate}
+                                  onChange={(event) => setWomanMinisterForm((prev) => ({ ...prev, presbiterOrdinationDate: event.target.value }))}
+                                  disabled={!createWomanMember}
+                                  className="flex-1 bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                                />
+                                <button
+                                   type="button"
+                                   onClick={handleWomanMinisterPresbiterPaste}
+                                   disabled={!createWomanMember}
+                                   className="px-3 py-2.5 bg-[#1c1c1c] border border-white/20 rounded-lg hover:border-[#017158] disabled:opacity-50 shrink-0"
+                                   title="Colar data"
+                                 >
+                                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2m0 0V3a2 2 0 00-2-2h-2a2 2 0 00-2 2v2z" />
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
+                            <div className="flex-1">
+                              <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Ordenação a Pastora</label>
+                              <div className="flex gap-2">
+                                <input
+                                  type="date"
+                                  value={womanMinisterForm.ministerOrdinationDate}
+                                  onChange={(event) => setWomanMinisterForm((prev) => ({ ...prev, ministerOrdinationDate: event.target.value }))}
+                                  disabled={!createWomanMember}
+                                  className="flex-1 bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                                />
+                                <button
+                                   type="button"
+                                   onClick={handleWomanMinisterPastorPaste}
+                                   disabled={!createWomanMember}
+                                   className="px-3 py-2.5 bg-[#1c1c1c] border border-white/20 rounded-lg hover:border-[#017158] disabled:opacity-50 shrink-0"
+                                   title="Colar data"
+                                 >
+                                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2m0 0V3a2 2 0 00-2-2h-2a2 2 0 00-2 2v2z" />
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="border-t border-white/10 pt-4 space-y-3">
+                          <div>
+                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">CEP</label>
+                            <input
+                              type="text"
+                              value={womanMinisterForm.zipCode}
+                              onChange={(event) => setWomanMinisterForm((prev) => ({ ...prev, zipCode: event.target.value }))}
+                              disabled={!createWomanMember}
+                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                              placeholder="00000-000"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Rua</label>
+                            <input
+                              type="text"
+                              value={womanMinisterForm.street}
+                              onChange={(event) => setWomanMinisterForm((prev) => ({ ...prev, street: event.target.value }))}
+                              disabled={!createWomanMember}
+                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                              placeholder="Rua"
+                            />
+                          </div>
+                          <div className="grid grid-cols-3 gap-3">
+                            <div>
+                              <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Número</label>
+                              <input
+                                type="text"
+                                value={womanMinisterForm.number}
+                                onChange={(event) => setWomanMinisterForm((prev) => ({ ...prev, number: event.target.value }))}
+                                disabled={!createWomanMember}
+                                className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                                placeholder="Número"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Cidade</label>
+                              <input
+                                type="text"
+                                value={womanMinisterForm.city}
+                                onChange={(event) => setWomanMinisterForm((prev) => ({ ...prev, city: event.target.value }))}
+                                disabled={!createWomanMember}
+                                className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                                placeholder="Cidade"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Estado</label>
+                              <input
+                                type="text"
+                                value={womanMinisterForm.state}
+                                onChange={(event) => setWomanMinisterForm((prev) => ({ ...prev, state: event.target.value }))}
+                                disabled={!createWomanMember}
+                                className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
+                                placeholder="UF"
+                                maxLength={2}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

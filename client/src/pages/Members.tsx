@@ -9,6 +9,7 @@ import { useICRApi, Member, Family, Church, Cell, Federation, Minister } from '.
 import { settledValue } from '@/lib/utils';
 import { useViaCEP } from '../hooks/useViaCEP';
 import { handleDatePaste } from '../lib/date-utils';
+import { DateInputWithPaste } from '../components/ui/DateInputWithPaste';
 import { countrySelectItems, DEFAULT_COUNTRY_CODE, formatPhoneNumber, formatPostalCode, normalizePhoneNumber, normalizePostalCode, validatePhoneNumber } from '../lib/country';
 import {
   GENDER_FEMALE,
@@ -97,7 +98,7 @@ export default function Membros() {
   const [showModal, setShowModal] = useState(false);
   const [editItem, setEditItem] = useState<Member | null>(null);
   const [form, setForm] = useState<MembroForm>({
-    name: '', familyId: '', gender: 1, birthDate: '', hasBeenMarried: false, role: '', phoneCountryCode: DEFAULT_COUNTRY_CODE, phoneNumber: '', postalCode: '', street: '', number: '', city: '', state: '',
+    name: '', familyId: '', gender: 1, birthDate: '', hasBeenMarried: false, role: '', phoneCountryCode: DEFAULT_COUNTRY_CODE, phoneNumber: '',
   });
   const [ministerForm, setMinisterForm] = useState<MinistroInlineForm>(EMPTY_MINISTER_FORM);
   const [saving, setSaving] = useState(false);
@@ -156,15 +157,21 @@ export default function Membros() {
   };
 
   const saveMinisterForMember = async (memberId: number) => {
+    const hasAddress = ministerForm.postalCode || ministerForm.street || ministerForm.number || ministerForm.city || ministerForm.state || ministerForm.countyOrRegion;
+    const today = new Date().toISOString().split('T')[0];
+
     const ministerBody: Record<string, unknown> = {
       memberId,
       cpf: ministerForm.cpf || '',
       email: ministerForm.email || '',
-      cardValidity: ministerForm.cardValidity || undefined,
-      presbiterOrdinationDate: ministerForm.presbiterOrdinationDate || undefined,
-      ministerOrdinationDate: ministerForm.ministerOrdinationDate || undefined,
+      cardValidity: ministerForm.cardValidity || today,
+      presbiterOrdinationDate: ministerForm.presbiterOrdinationDate || today,
+      ministerOrdinationDate: ministerForm.ministerOrdinationDate || null,
       isInsured: ministerForm.isInsured,
-      address: {
+    };
+
+    if (hasAddress) {
+      ministerBody.address = {
         countryCode: ministerForm.countryCode || DEFAULT_COUNTRY_CODE,
         postalCode: ministerForm.postalCode || '',
         street: ministerForm.street || '',
@@ -173,8 +180,10 @@ export default function Membros() {
         city: ministerForm.city || '',
         state: ministerForm.state || '',
         countyOrRegion: ministerForm.countyOrRegion || '',
-      },
-    };
+      };
+    } else {
+      ministerBody.address = null;
+    }
 
     const ministers = await fetchApi<Minister[]>('/api/ministers?page=1&pageSize=100').catch(() => []);
     const existingMinister = Array.isArray(ministers)
@@ -682,11 +691,13 @@ export default function Membros() {
                       <option value={2}>Feminino</option>
                     </select>
                   </div>
-                  <div>
-                    <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Data de Nascimento</label>
-                    <input type="date" max={todayDate} value={form.birthDate} onChange={e => setF('birthDate', e.target.value)} onPaste={handleDatePaste}
-                      className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]" />
-                  </div>
+                  <DateInputWithPaste
+                    label="Data de Nascimento"
+                    max={todayDate}
+                    value={form.birthDate}
+                    onChange={(e) => setF('birthDate', e.target.value)}
+                    showPasteButton={true}
+                  />
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <SmartSelect
@@ -769,39 +780,27 @@ export default function Membros() {
                         placeholder="email@exemplo.com"
                       />
                     </div>
-                    <div>
-                      <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Validade Carteira</label>
-                      <input
-                        type="date"
-                        value={ministerForm.cardValidity}
-                        onChange={(e) => setMinisterF('cardValidity', e.target.value)}
-                        onPaste={handleDatePaste}
-                        className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Ordenação Presbítero</label>
-                      <input
-                        type="date"
-                        max={todayDate}
-                        value={ministerForm.presbiterOrdinationDate}
-                        onChange={(e) => setMinisterF('presbiterOrdinationDate', e.target.value)}
-                        onPaste={handleDatePaste}
-                        className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                      />
-                    </div>
+                    <DateInputWithPaste
+                      label="Validade Carteira"
+                      value={ministerForm.cardValidity}
+                      onChange={(e) => setMinisterF('cardValidity', e.target.value)}
+                      showPasteButton={true}
+                    />
+                    <DateInputWithPaste
+                      label="Ordenação Presbítero"
+                      max={todayDate}
+                      value={ministerForm.presbiterOrdinationDate}
+                      onChange={(e) => setMinisterF('presbiterOrdinationDate', e.target.value)}
+                      showPasteButton={true}
+                    />
                     {!isPresbiteroSelected && (
-                      <div className="col-span-2">
-                        <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Ordenação a Pastor</label>
-                        <input
-                          type="date"
-                          max={todayDate}
-                          value={ministerForm.ministerOrdinationDate}
-                          onChange={(e) => setMinisterF('ministerOrdinationDate', e.target.value)}
-                          onPaste={handleDatePaste}
-                          className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                        />
-                      </div>
+                      <DateInputWithPaste
+                        label="Ordenação a Pastor"
+                        max={todayDate}
+                        value={ministerForm.ministerOrdinationDate}
+                        onChange={(e) => setMinisterF('ministerOrdinationDate', e.target.value)}
+                        showPasteButton={true}
+                      />
                     )}
                   </div>
 
