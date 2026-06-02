@@ -1,16 +1,26 @@
+version: '3.8'
+
 services:
-  icr.front:
+  # Aplicação Frontend + Cliente
+  app:
     image: ghcr.io/davifigueiracarvalho/icr-gestao-secretaria-fe:latest
-    container_name: icr_front
+    pull_policy: always
+    container_name: icr_secretaria
+    restart: unless-stopped
     ports:
       - "3000:3000"
     environment:
-      ICR_API_URL: http://icr.api:8080
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: 3000
+      ICR_API_URL: ${ICR_API_URL:-http://api.icr.local:8080}
     networks:
       - icr-net
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      timeout: 5s
+      retries: 5
+      interval: 30s
 
 networks:
-  # Se estiver rodando junto com o compose do backend (que já cria icr-net),
-  # troque por:  icr-net:\n    external: true
   icr-net:
     driver: bridge
