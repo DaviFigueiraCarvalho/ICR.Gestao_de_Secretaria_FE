@@ -1,0 +1,26 @@
+name: Trigger Backend Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  trigger-backend:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Clone backend repository
+        run: |
+          git clone https://x-access-token:${{ secrets.BACKEND_TOKEN }}@github.com/DaviFigueiraCarvalho/ICR.Gestao_de_Secretaria_API.git backend
+
+      - name: Create empty commit and push
+        run: |
+          cd backend
+
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+
+          git commit --allow-empty -m "trigger deploy from frontend"
+
+          git push origin main
