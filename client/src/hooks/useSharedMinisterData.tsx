@@ -18,6 +18,10 @@ export function MinisterDataProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState<string | null>(null);
   const [shouldReload, setShouldReload] = useState(true);
 
+  const invalidate = useCallback(() => {
+    setShouldReload(true);
+  }, []);
+
   const reload = useCallback(async () => {
     if (!shouldReload) return;
 
