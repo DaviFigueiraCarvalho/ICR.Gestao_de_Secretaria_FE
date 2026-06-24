@@ -158,7 +158,7 @@ const getPhoneDisplay = (
 
       pdf.setFont('helvetica', 'bold');
       pdf.setFontSize(9.5);
-      pdf.text('Presidente da Federação ICR Avivalista do Brasil em Exercício', signatureCenterX, y + 28, { align: 'center' });
+      pdf.text('Presidente da Federação ICR Avivalista do Brasil', signatureCenterX, y + 28, { align: 'center' });
     };
 
     const createNewPage = () => {
