@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { jsPDF } from 'jspdf';
+import * as XLSX from 'xlsx';
 import ICRLayout from '../components/ICRLayout';
 import { useICRApi, Minister } from '../hooks/useICRApi';
 import { getMinisterCoverageBadgeClass, getMinisterCoverageLabel, resolveMinisterCoverageStatus, summarizeMinisterCoverage } from '../lib/minister-coverage';
@@ -14,6 +15,7 @@ export default function MinistersInsurance() {
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [generatedPdfUrl, setGeneratedPdfUrl] = useState<string | null>(null);
   const [generatedPdfName, setGeneratedPdfName] = useState<string>('seguro-ministros.pdf');
+  const [isGeneratingExcel, setIsGeneratingExcel] = useState(false);
   const blobUrlRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -307,6 +309,51 @@ const getPhoneDisplay = (
     }
   };
 
+  const handleGenerateExcel = async () => {
+    setIsGeneratingExcel(true);
+    try {
+      const insuredMinisters = sortedData.filter((minister) => {
+        const status = normalizePdfText(
+          minister.insuranceStatus ?? minister.status ?? minister.coverageStatus ?? '',
+        ).toUpperCase();
+
+        if (status === 'NÃO SEGURADO' || status === 'NAO SEGURADO') {
+          return false;
+        }
+
+        return resolveMinisterCoverageStatus(minister) === 'covered';
+      });
+
+      const excelData = insuredMinisters.map((minister) => ({
+        Nome: minister.memberName || '-',
+        CPF: minister.cpf || '-',
+        Telefone: getPhoneDisplay(minister.memberPhone) || '-',
+        'E-mail': minister.email || '-',
+        Nascimento: minister.memberBirthday ? new Date(minister.memberBirthday).toLocaleDateString('pt-BR') : '-',
+      }));
+
+      const worksheet = XLSX.utils.json_to_sheet(excelData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'Seguro Ministros');
+
+      const excelBlob = new Blob(
+        [XLSX.write(workbook, { bookType: 'xlsx', type: 'array' })],
+        { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
+      );
+      const url = URL.createObjectURL(excelBlob);
+      const fileName = `seguro-ministros-${new Date().toISOString().slice(0, 10)}.xlsx`;
+
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = fileName;
+      anchor.click();
+
+      URL.revokeObjectURL(url);
+    } finally {
+      setIsGeneratingExcel(false);
+    }
+  };
+
   useEffect(() => {
     return () => {
       if (blobUrlRef.current) {
@@ -360,7 +407,15 @@ const getPhoneDisplay = (
                   disabled={isGeneratingPdf || sortedData.length === 0}
                   className="rounded-xl bg-[#017158] px-4 py-2 text-sm font-['Nunito'] text-white hover:bg-[#01906f] transition-colors disabled:opacity-50"
                 >
-                  {isGeneratingPdf ? 'Gerando PDF...' : 'Gerar PDF'}
+                  {isGeneratingPdf ? 'Gerando...' : 'Gerar Relatório'}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleGenerateExcel}
+                  disabled={isGeneratingExcel || sortedData.length === 0}
+                  className="rounded-xl bg-[#017158] px-4 py-2 text-sm font-['Nunito'] text-white hover:bg-[#01906f] transition-colors disabled:opacity-50"
+                >
+                  {isGeneratingExcel ? 'Gerando...' : 'Baixar Excel'}
                 </button>
               </div>
             </div>
@@ -407,7 +462,7 @@ const getPhoneDisplay = (
       {generatedPdfUrl && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="w-full max-w-md rounded-3xl border border-white/10 bg-[#202020] p-6 shadow-2xl">
-            <p className="text-white/50 text-xs uppercase tracking-[0.2em] font-['Nunito'] mb-2">PDF gerado</p>
+            <p className="text-white/50 text-xs uppercase tracking-[0.2em] font-['Nunito'] mb-2">Relatório gerado</p>
             <h3 className="text-white text-2xl font-['Nunito'] font-semibold mb-3">Escolha uma ação</h3>
             <p className="text-white/60 font-['Nunito'] mb-5">
               O arquivo foi criado sem área e igreja. Você pode abrir em outra guia ou baixar agora.
@@ -427,6 +482,14 @@ const getPhoneDisplay = (
                 className="rounded-xl bg-[#017158] px-4 py-2 text-sm font-['Nunito'] text-white hover:bg-[#01906f] transition-colors"
               >
                 Baixar PDF
+              </button>
+              <button
+                type="button"
+                onClick={handleGenerateExcel}
+                disabled={isGeneratingExcel}
+                className="rounded-xl bg-[#017158] px-4 py-2 text-sm font-['Nunito'] text-white hover:bg-[#01906f] transition-colors disabled:opacity-50"
+              >
+                {isGeneratingExcel ? 'Gerando...' : 'Baixar Excel'}
               </button>
               <button
                 type="button"
