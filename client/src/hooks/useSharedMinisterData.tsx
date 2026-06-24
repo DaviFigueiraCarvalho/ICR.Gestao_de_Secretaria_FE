@@ -25,8 +25,14 @@ export function MinisterDataProvider({ children }: { children: ReactNode }) {
     setError(null);
 
     try {
-      const response = await fetchApi<Minister[]>('/api/ministers/insured');
-      setData(Array.isArray(response) ? response : []);
+      const response = await fetchApi<Minister[]>('/api/ministers?pageNumber=1&pageQuantity=100');
+      const allMinisters = Array.isArray(response) ? response : [];
+      // Filter only insured ministers
+      const insuredMinisters = allMinisters.filter((minister) => {
+        const isInsured = minister.insurance ?? minister.insured ?? minister.isInsured ?? minister.segurado ?? false;
+        return isInsured === true;
+      });
+      setData(insuredMinisters);
       setShouldReload(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar ministros');
@@ -34,12 +40,6 @@ export function MinisterDataProvider({ children }: { children: ReactNode }) {
       setIsLoading(false);
     }
   }, [fetchApi, shouldReload]);
-
-  const invalidate = useCallback(() => {
-    setShouldReload(true);
-  }, []);
-
-  // Carrega dados inicialmente quando mounted
   React.useEffect(() => {
     if (shouldReload) {
       reload();

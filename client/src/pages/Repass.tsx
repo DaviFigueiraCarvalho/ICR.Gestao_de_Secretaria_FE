@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
 import ICRLayout from '../components/ICRLayout';
+import SmartSelect, { SmartSelectOption } from '../components/SmartSelect';
 import { useICRApi, Repass, Reference, Church } from '../hooks/useICRApi';
 import { useTheme } from '../contexts/ThemeContext';
 import { Button } from '../components/ui/button';
@@ -162,7 +163,6 @@ export default function Repasses() {
   const { theme } = useTheme();
   const isLight = theme === 'light';
   const [references, setReferences] = useState<Reference[]>([]);
-  const [churches, setChurches] = useState<Church[]>([]);
   const [repasses, setRepasses] = useState<Repass[]>([]);
   const [selectedRef, setSelectedRef] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -187,17 +187,14 @@ export default function Repasses() {
     setIsLoading(true);
     setError(null);
     try {
-      const [refs, churchList] = await Promise.allSettled([
+      const [refs] = await Promise.allSettled([
         fetchApi<Reference[]>('/api/repasses/references'),
-        fetchApi<Church[]>('/api/churches'),
       ]);
 
       const resolvedRefs = settledValue(refs) ?? [];
-      const resolvedChurches = settledValue(churchList) ?? [];
       const orderedRefs = sortReferencesChronologically(resolvedRefs);
 
       setReferences(orderedRefs);
-      setChurches(resolvedChurches);
       if (orderedRefs.length > 0 && !selectedRef) {
         setSelectedRef(orderedRefs[orderedRefs.length - 1].id);
       }
@@ -223,6 +220,21 @@ export default function Repasses() {
     if (selectedRef) loadRepasses(selectedRef);
   }, [selectedRef]);
 
+  const fetchChurchItems = async (page: number, query: string): Promise<SmartSelectOption[]> => {
+    const params = new URLSearchParams();
+    params.append('pageNumber', String(page));
+    params.append('pageQuantity', '10');
+    if (query.trim()) {
+      params.append('querySearch', query.trim());
+    }
+
+    const results = await fetchApi<Church[]>(`/api/churches?${params.toString()}`);
+    return (Array.isArray(results) ? results : []).map((church) => ({
+      id: church.id,
+      name: church.name,
+    }));
+  };
+
   // Build rows: all churches with their repass status for selected reference
   const rows = useMemo((): RepassRow[] => {
     const getSortPriority = (amount?: number) => {
@@ -232,18 +244,19 @@ export default function Repasses() {
       return 2; // Nao pagos
     };
 
-    return churches
-      .filter(c => !search || c.name.toLowerCase().includes(search.toLowerCase()) || (c.federationName || '').toLowerCase().includes(search.toLowerCase()))
-      .map(church => {
-        const repass = repasses.find(r => r.churchId === church.id);
+    return repasses
+      .map(repass => {
+        const churchName = repass.churchName || `Igreja ${repass.churchId}`;
+        const federationName = repass.referenceName || '';
         return {
-          churchId: church.id,
-          churchName: church.name,
-          federationName: church.federationName,
+          churchId: repass.churchId,
+          churchName,
+          federationName,
           repass,
-          amount: repass?.amount,
+          amount: repass.amount,
         };
       })
+      .filter(row => !search || row.churchName.toLowerCase().includes(search.toLowerCase()) || (row.federationName || '').toLowerCase().includes(search.toLowerCase()))
       .sort((a, b) => {
         const priorityDiff = getSortPriority(a.amount) - getSortPriority(b.amount);
         if (priorityDiff !== 0) return priorityDiff;
@@ -255,7 +268,7 @@ export default function Repasses() {
 
         return a.churchName.localeCompare(b.churchName, 'pt-BR', { sensitivity: 'base' });
       });
-  }, [churches, repasses, search]);
+  }, [repasses, search]);
 
   // Summary
   const totalPaid = rows.filter(r => r.amount && r.amount > 0).reduce((sum, r) => sum + (r.amount || 0), 0);
@@ -408,17 +421,14 @@ export default function Repasses() {
   const selectedRefName = references.find(r => r.id === selectedRef)?.name || '';
 
   const pendingRows = useMemo(() => {
-    return churches
-      .map((church) => {
-        const repass = repasses.find((item) => item.churchId === church.id);
-        return {
-          churchId: church.id,
-          churchName: church.name,
-          federationName: church.federationName,
-          amount: repass?.amount,
-        };
-      })
-      .filter((row) => row.amount == null || row.amount < 150)
+    return repasses
+      .filter((repass) => repass.amount == null || repass.amount < 150)
+      .map((repass) => ({
+        churchId: repass.churchId,
+        churchName: repass.churchName || `Igreja ${repass.churchId}`,
+        federationName: repass.referenceName || '',
+        amount: repass.amount,
+      }))
       .sort((a, b) => {
         const federationCompare = (a.federationName || '').localeCompare(b.federationName || '', 'pt-BR', {
           sensitivity: 'base',
@@ -427,7 +437,7 @@ export default function Repasses() {
 
         return a.churchName.localeCompare(b.churchName, 'pt-BR', { sensitivity: 'base' });
       });
-  }, [churches, repasses]);
+  }, [repasses]);
 
   const buildPendingRepassMessage = () => {
     if (!selectedReference) {
@@ -773,17 +783,14 @@ export default function Repasses() {
 
             <div className="space-y-4">
               <div>
-                <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Igreja *</label>
-                <select
-                  value={form.churchId}
-                  onChange={e => setForm({ ...form, churchId: e.target.value ? Number(e.target.value) : '' })}
-                  className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                >
-                  <option value="">Selecione a igreja</option>
-                  {churches.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
+                <SmartSelect
+                  label="Igreja"
+                  selectedId={form.churchId}
+                  onSelect={(id) => setForm({ ...form, churchId: id === '' ? '' : Number(id) })}
+                  placeholder="Selecione a igreja"
+                  fetchItems={fetchChurchItems}
+                  required
+                />
               </div>
               <div>
                 <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Referência (Mês) *</label>

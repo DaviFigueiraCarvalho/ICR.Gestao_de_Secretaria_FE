@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/popover';
 import { Command, CommandInput, CommandList, CommandEmpty, CommandItem } from '@/components/ui/command';
 
-interface SmartSelectOption {
+export interface SmartSelectOption {
   id: number | string;
   name: string;
   iconUrl?: string;
@@ -57,15 +57,34 @@ export default function SmartSelect({
 
   const resolvedSelectedId = selectedId === '' || selectedId == null ? defaultSelectedId ?? '' : selectedId;
 
-  // Initialize selected item from items when component mounts or selectedId changes
+  // Initialize selected item from local items or fetch from API when component mounts or selectedId changes
   useEffect(() => {
-    if (resolvedSelectedId) {
-      const found = items.find(item => item.id === resolvedSelectedId);
-      if (found) {
-        setSelectedItem(found);
-      }
+    if (!resolvedSelectedId) return;
+
+    // First try to find in local items
+    const foundLocally = items.find(item => item.id === resolvedSelectedId);
+    if (foundLocally) {
+      setSelectedItem(foundLocally);
+      return;
     }
-  }, [resolvedSelectedId, items]);
+
+    // If not found locally and we have fetchItems, fetch the specific item
+    if (fetchItems && resolvedSelectedId) {
+      const loadSelectedItem = async () => {
+        try {
+          // Fetch just one item by ID - most APIs support this pattern
+          const results = await fetchItems(1, String(resolvedSelectedId));
+          const found = results.find(item => item.id === resolvedSelectedId);
+          if (found) {
+            setSelectedItem(found);
+          }
+        } catch (err) {
+          console.error('[SmartSelect] Error loading selected item:', err);
+        }
+      };
+      loadSelectedItem();
+    }
+  }, [resolvedSelectedId, items, fetchItems]);
 
   // Fetch items from API or use local items
   const loadItems = async (page: number, searchQuery: string, append: boolean = false) => {

@@ -180,8 +180,8 @@ export interface Minister {
   presbiterOrdinationDate?: string;
   ministerOrdinationDate?: string;
   member?: Member;
-  insurance?: boolean;
   insured?: boolean;
+  insurance?: boolean;
   eligible?: boolean;
   isInsured?: boolean;
   isEligible?: boolean;
@@ -199,6 +199,24 @@ export interface Minister {
     state?: string;
     countyOrRegion?: string;
   };
+}
+
+export interface MinisterInsured {
+  id: number;
+  fullName: string;
+  birthDate: string;
+  cpf?: string;
+  email?: string;
+  phone?: {
+    countryCode?: string;
+    countryName?: string;
+    number?: string;
+    displayFormat?: string;
+    internationalFormat?: string;
+    e164Format?: string;
+    isMobileNumber?: boolean;
+  };
+  insurance: boolean;
 }
 
 export interface Repass {

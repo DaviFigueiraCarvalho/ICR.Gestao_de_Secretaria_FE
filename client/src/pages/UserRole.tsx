@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import ICRLayout from '../components/ICRLayout';
+import SmartSelect, { SmartSelectOption } from '../components/SmartSelect';
 import CRUDTable, { Column } from '../components/CRUDTable';
 import { Member, useICRApi } from '../hooks/useICRApi';
 import { settledValue } from '@/lib/utils';
@@ -181,14 +182,27 @@ export default function Usuarios() {
     }
   };
 
+  const fetchMemberItems = async (page: number, query: string): Promise<SmartSelectOption[]> => {
+    const params = new URLSearchParams();
+    params.append('pageNumber', String(page));
+    params.append('pageQuantity', '10');
+    if (query.trim()) {
+      params.append('querySearch', query.trim());
+    }
+
+    const results = await fetchApi<Member[]>(`/api/members?${params.toString()}`);
+    return (Array.isArray(results) ? results : []).map((member) => ({
+      id: member.id,
+      name: member.name,
+    }));
+  };
+
   const loadLookups = async () => {
     try {
-      const [membersResult, rolesResult] = await Promise.allSettled([
-        fetchApi<Member[]>('/api/members?pageNumber=1&pageQuantity=200'),
+      const [rolesResult] = await Promise.allSettled([
         fetchApi<unknown>('/api/user-roles/roles'),
       ]);
 
-      setMembers(settledValue(membersResult) ?? []);
       setRoles(normalizeRoles(settledValue(rolesResult)));
     } catch {
       // User list can still be used even if lookups fail.
@@ -466,19 +480,13 @@ export default function Usuarios() {
               </div>
 
               <div>
-                <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Membro vinculado</label>
-                <select
-                  value={form.memberId}
-                  onChange={(e) => setForm((prev) => ({ ...prev, memberId: e.target.value ? Number(e.target.value) : '' }))}
-                  className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                >
-                  <option value="">Sem vínculo</option>
-                  {members.map((member) => (
-                    <option key={member.id} value={member.id}>
-                      {member.name}
-                    </option>
-                  ))}
-                </select>
+                <SmartSelect
+                  label="Membro Vinculado"
+                  selectedId={form.memberId}
+                  onSelect={(id) => setForm((prev) => ({ ...prev, memberId: id === '' ? '' : Number(id) }))}
+                  placeholder="Selecione um membro"
+                  fetchItems={fetchMemberItems}
+                />
               </div>
 
               <div>
