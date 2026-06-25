@@ -163,6 +163,7 @@ export default function Repasses() {
   const { theme } = useTheme();
   const isLight = theme === 'light';
   const [references, setReferences] = useState<Reference[]>([]);
+  const [churches, setChurches] = useState<Church[]>([]);
   const [repasses, setRepasses] = useState<Repass[]>([]);
   const [selectedRef, setSelectedRef] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -187,14 +188,17 @@ export default function Repasses() {
     setIsLoading(true);
     setError(null);
     try {
-      const [refs] = await Promise.allSettled([
+      const [refs, churchList] = await Promise.allSettled([
         fetchApi<Reference[]>('/api/repasses/references'),
+        fetchApi<Church[]>('/api/churches'),
       ]);
 
       const resolvedRefs = settledValue(refs) ?? [];
+      const resolvedChurches = settledValue(churchList) ?? [];
       const orderedRefs = sortReferencesChronologically(resolvedRefs);
 
       setReferences(orderedRefs);
+      setChurches(resolvedChurches);
       if (orderedRefs.length > 0 && !selectedRef) {
         setSelectedRef(orderedRefs[orderedRefs.length - 1].id);
       }
@@ -244,19 +248,18 @@ export default function Repasses() {
       return 2; // Nao pagos
     };
 
-    return repasses
-      .map(repass => {
-        const churchName = repass.churchName || `Igreja ${repass.churchId}`;
-        const federationName = repass.referenceName || '';
+    return churches
+      .filter(c => !search || c.name.toLowerCase().includes(search.toLowerCase()) || (c.federationName || '').toLowerCase().includes(search.toLowerCase()))
+      .map(church => {
+        const repass = repasses.find(r => r.churchId === church.id);
         return {
-          churchId: repass.churchId,
-          churchName,
-          federationName,
+          churchId: church.id,
+          churchName: church.name,
+          federationName: church.federationName,
           repass,
-          amount: repass.amount,
+          amount: repass?.amount,
         };
       })
-      .filter(row => !search || row.churchName.toLowerCase().includes(search.toLowerCase()) || (row.federationName || '').toLowerCase().includes(search.toLowerCase()))
       .sort((a, b) => {
         const priorityDiff = getSortPriority(a.amount) - getSortPriority(b.amount);
         if (priorityDiff !== 0) return priorityDiff;
@@ -268,7 +271,7 @@ export default function Repasses() {
 
         return a.churchName.localeCompare(b.churchName, 'pt-BR', { sensitivity: 'base' });
       });
-  }, [repasses, search]);
+  }, [churches, repasses, search]);
 
   // Summary
   const totalPaid = rows.filter(r => r.amount && r.amount > 0).reduce((sum, r) => sum + (r.amount || 0), 0);
@@ -421,14 +424,17 @@ export default function Repasses() {
   const selectedRefName = references.find(r => r.id === selectedRef)?.name || '';
 
   const pendingRows = useMemo(() => {
-    return repasses
-      .filter((repass) => repass.amount == null || repass.amount < 150)
-      .map((repass) => ({
-        churchId: repass.churchId,
-        churchName: repass.churchName || `Igreja ${repass.churchId}`,
-        federationName: repass.referenceName || '',
-        amount: repass.amount,
-      }))
+    return churches
+      .map((church) => {
+        const repass = repasses.find((item) => item.churchId === church.id);
+        return {
+          churchId: church.id,
+          churchName: church.name,
+          federationName: church.federationName,
+          amount: repass?.amount,
+        };
+      })
+      .filter((row) => row.amount == null || row.amount < 150)
       .sort((a, b) => {
         const federationCompare = (a.federationName || '').localeCompare(b.federationName || '', 'pt-BR', {
           sensitivity: 'base',
@@ -437,7 +443,7 @@ export default function Repasses() {
 
         return a.churchName.localeCompare(b.churchName, 'pt-BR', { sensitivity: 'base' });
       });
-  }, [repasses]);
+  }, [churches, repasses]);
 
   const buildPendingRepassMessage = () => {
     if (!selectedReference) {
