@@ -54,6 +54,8 @@ export default function SmartSelect({
   const loadingLockRef = useRef(false);
   // Command list ref for scroll detection
   const commandListRef = useRef<HTMLDivElement>(null);
+  // Track if items have been loaded to prevent unnecessary reloads
+  const hasLoadedRef = useRef(false);
 
   const resolvedSelectedId = selectedId === '' || selectedId == null ? defaultSelectedId ?? '' : selectedId;
 
@@ -103,7 +105,8 @@ export default function SmartSelect({
         const newItems = await fetchItems(page, searchQuery);
 
         // Detect if we've reached the end of pagination
-        const hasMoreResults = newItems.length === PAGE_SIZE;
+        // If we get less than PAGE_SIZE items, we've reached the end
+        const hasMoreResults = newItems.length >= PAGE_SIZE;
         setHasMore(hasMoreResults);
         setItemsPerPage(newItems.length);
 
@@ -113,6 +116,7 @@ export default function SmartSelect({
         } else {
           // New search: replace items
           setRemoteItems(newItems);
+          hasLoadedRef.current = true;
         }
       } else if (items.length > 0) {
         // Fallback to local items if fetchItems not provided
@@ -145,6 +149,8 @@ export default function SmartSelect({
     // Set new debounce timer
     debounceTimerRef.current = setTimeout(() => {
       console.log('[SmartSelect] Search debounce triggered, query:', newQuery);
+      // Reset hasLoadedRef to allow loading new items
+      hasLoadedRef.current = false;
       setCurrentPage(1);
       setRemoteItems([]);
       setHasMore(true);
@@ -156,9 +162,15 @@ export default function SmartSelect({
   const handleOpenChange = (newOpen: boolean) => {
     setOpen(newOpen);
 
-    if (newOpen && remoteItems.length === 0 && !loading) {
+    if (newOpen && !loading) {
       console.log('[SmartSelect] Dropdown opened, loading initial items');
-      loadItems(1, '', false);
+      // Only reload if we haven't loaded items yet for this query
+      if (!hasLoadedRef.current || remoteItems.length === 0) {
+        setRemoteItems([]);
+        setCurrentPage(1);
+        setHasMore(true);
+        loadItems(1, query, false);
+      }
     }
   };
 
@@ -271,9 +283,15 @@ export default function SmartSelect({
                     </div>
                   )}
                 </>
-              ) : (
-                <CommandEmpty>Nenhum resultado encontrado.</CommandEmpty>
-              )}
+              ) : !loading && query.trim() ? (
+                <div className="px-4 py-6 text-center text-white/40 text-sm">
+                  Nenhum resultado encontrado.
+                </div>
+              ) : !loading && !query.trim() ? (
+                <div className="px-4 py-6 text-center text-white/40 text-sm">
+                  Digite para buscar...
+                </div>
+              ) : null}
             </CommandList>
           </Command>
 

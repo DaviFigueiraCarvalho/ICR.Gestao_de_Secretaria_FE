@@ -382,10 +382,13 @@ export default function Membros() {
 
     if (!form.name.trim()) { toast.error('Nome é obrigatório'); return; }
 
-    if (form.familyId && !scopedFamilies.some((family) => family.id === form.familyId)) {
-      toast.error('Você não tem permissão para vincular este membro a essa família.');
-      return;
-    }
+    // Validação de permissão de família removida pois o SmartSelect com fetchItems
+    // já filtra as famílias por escopo. A validação era muito restritiva pois
+    // scopedFamilies só contém as famílias carregadas na requisição inicial.
+    // if (form.familyId && !scopedFamilies.some((family) => family.id === form.familyId)) {
+    //   toast.error('Você não tem permissão para vincular este membro a essa família.');
+    //   return;
+    // }
 
     const normalizedCellPhone = normalizePhoneNumber(form.phoneCountryCode, form.phoneNumber);
     const phoneValidationError = normalizedCellPhone
@@ -598,7 +601,7 @@ export default function Membros() {
   const fetchFamilies = async (page: number, query: string): Promise<SmartSelectOption[]> => {
     const params = new URLSearchParams();
     params.append('pageNumber', String(page));
-    params.append('pageQuantity', String(10)); // PAGE_SIZE from SmartSelect
+    params.append('pageQuantity', String(10));
     
     // Get allowed church IDs from scoped churches
     const allowedChurchIds = Array.from(new Set(scopedChurches.map((church) => church.id)));
@@ -612,13 +615,19 @@ export default function Membros() {
     }
     
     const endpoint = `/api/families?${params.toString()}`;
-    const result = await fetchApi<Family[]>(endpoint);
     
-    if (Array.isArray(result)) {
-      return result.map(f => ({ id: f.id, name: f.name }));
+    try {
+      const result = await fetchApi<Family[]>(endpoint);
+      
+      if (Array.isArray(result)) {
+        return result.map(f => ({ id: f.id, name: f.name }));
+      }
+      
+      return [];
+    } catch (error) {
+      console.error('[fetchFamilies] Error:', error);
+      throw error;
     }
-    
-    return [];
   };
 
   const scopedCells = useMemo(() => {
