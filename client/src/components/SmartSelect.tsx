@@ -152,7 +152,6 @@ export default function SmartSelect({
       // Reset hasLoadedRef to allow loading new items
       hasLoadedRef.current = false;
       setCurrentPage(1);
-      setRemoteItems([]);
       setHasMore(true);
       loadItems(1, newQuery, false);
     }, SEARCH_DEBOUNCE_MS);
