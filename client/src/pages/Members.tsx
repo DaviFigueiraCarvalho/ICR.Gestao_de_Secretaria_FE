@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import ICRLayout from '../components/ICRLayout';
 import CRUDTable, { Column } from '../components/CRUDTable';
-import SmartSelect from '../components/SmartSelect';
+import SmartSelect, { SmartSelectOption } from '../components/SmartSelect';
 import MultiSmartSelect from '../components/MultiSmartSelect';
 import { useICRAuth } from '../contexts/ICRAuthContext';
 import { buildLocalChurchFallback, getScopeLevel, resolveScopeRestrictions } from '../lib/scope-access';
@@ -594,6 +594,33 @@ export default function Membros() {
     return families.filter((family) => allowedChurchIds.has(family.churchId));
   }, [families, scopedChurches]);
 
+  // Lazy load function for SmartSelect
+  const fetchFamilies = async (page: number, query: string): Promise<SmartSelectOption[]> => {
+    const params = new URLSearchParams();
+    params.append('pageNumber', String(page));
+    params.append('pageQuantity', String(10)); // PAGE_SIZE from SmartSelect
+    
+    // Get allowed church IDs from scoped churches
+    const allowedChurchIds = Array.from(new Set(scopedChurches.map((church) => church.id)));
+    
+    if (allowedChurchIds.length > 0) {
+      params.append('churchId', allowedChurchIds[0].toString());
+    }
+    
+    if (query.trim()) {
+      params.append('querySearch', query.trim());
+    }
+    
+    const endpoint = `/api/families?${params.toString()}`;
+    const result = await fetchApi<Family[]>(endpoint);
+    
+    if (Array.isArray(result)) {
+      return result.map(f => ({ id: f.id, name: f.name }));
+    }
+    
+    return [];
+  };
+
   const scopedCells = useMemo(() => {
     const allowedChurchIds = new Set(scopedChurches.map((church) => church.id));
     return cells.filter((cell) => allowedChurchIds.has(cell.churchId));
@@ -804,7 +831,7 @@ export default function Membros() {
                   label="Família"
                   selectedId={form.familyId}
                   onSelect={(id) => setF('familyId', id)}
-                  items={scopedFamilies.map((f) => ({ id: f.id, name: f.name }))}
+                  fetchItems={fetchFamilies}
                   placeholder="Selecione uma família"
                 />
               </div>
