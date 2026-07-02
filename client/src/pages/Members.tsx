@@ -121,6 +121,7 @@ export default function Membros() {
   const [searchTerm, setSearchTerm] = useState('');
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const scopeLevel = getScopeLevel(user?.scope, user?.username);
+  const scopedChurchesRef = useRef<Church[]>([]);
   const isLocalScope = scopeLevel === 'local';
   const isFederatedScope = scopeLevel === 'federated';
 
@@ -592,6 +593,11 @@ export default function Membros() {
     return churches.filter((church) => allowedChurchIds.has(church.id));
   }, [churches, restrictions.allowedChurchIds, scopeLevel]);
 
+  // Keep ref updated with latest scopedChurches value
+  useEffect(() => {
+    scopedChurchesRef.current = scopedChurches;
+  }, [scopedChurches]);
+
   const scopedFamilies = useMemo(() => {
     const allowedChurchIds = new Set(scopedChurches.map((church) => church.id));
     return families.filter((family) => allowedChurchIds.has(family.churchId));
@@ -603,8 +609,9 @@ export default function Membros() {
     params.append('pageNumber', String(page));
     params.append('pageQuantity', String(10));
     
-    // Get allowed church IDs from scoped churches
-    const allowedChurchIds = Array.from(new Set(scopedChurches.map((church) => church.id)));
+    // Get allowed church IDs from scoped churches ref (always up-to-date)
+    const currentScopedChurches = scopedChurchesRef.current;
+    const allowedChurchIds = Array.from(new Set(currentScopedChurches.map((church) => church.id)));
     
     if (allowedChurchIds.length > 0) {
       params.append('churchId', allowedChurchIds[0].toString());

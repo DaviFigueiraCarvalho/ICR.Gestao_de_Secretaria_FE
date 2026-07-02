@@ -146,13 +146,15 @@ export default function SmartSelect({
       clearTimeout(debounceTimerRef.current);
     }
 
+    // Immediately reset state to allow new search
+    hasLoadedRef.current = false;
+    setCurrentPage(1);
+    setHasMore(true);
+    setRemoteItems([]);
+
     // Set new debounce timer
     debounceTimerRef.current = setTimeout(() => {
       console.log('[SmartSelect] Search debounce triggered, query:', newQuery);
-      // Reset hasLoadedRef to allow loading new items
-      hasLoadedRef.current = false;
-      setCurrentPage(1);
-      setHasMore(true);
       loadItems(1, newQuery, false);
     }, SEARCH_DEBOUNCE_MS);
   };
