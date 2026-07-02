@@ -24,7 +24,7 @@ interface SmartSelectProps {
 }
 
 const PAGE_SIZE = 10;
-const SEARCH_DEBOUNCE_MS = 500;
+const SEARCH_DEBOUNCE_MS = 300;
 
 export default function SmartSelect({
   label,
@@ -293,60 +293,6 @@ export default function SmartSelect({
               ) : null}
             </CommandList>
           </Command>
-
-          {/* Pagination Footer */}
-          {remoteItems.length > 0 && (
-            <div className="border-t border-white/10 px-4 py-3 bg-[#1c1c1c]">
-              <div className="flex items-center justify-between gap-2">
-                {/* Previous Button */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (currentPage > 1) {
-                      const prevPage = currentPage - 1;
-                      setCurrentPage(prevPage);
-                      setRemoteItems([]);
-                      loadItems(prevPage, query, false);
-                    }
-                  }}
-                  disabled={currentPage === 1 || loading}
-                  className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                    currentPage === 1 || loading
-                      ? 'bg-white/10 text-white/40 cursor-not-allowed'
-                      : 'bg-[#017158] text-white hover:bg-[#015a45]'
-                  }`}
-                >
-                  ← Anterior
-                </button>
-
-                {/* Page Indicator */}
-                <span className="text-white/70 text-sm font-medium whitespace-nowrap">
-                  Página {currentPage}
-                </span>
-
-                {/* Next Button */}
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (hasMore) {
-                      const nextPage = currentPage + 1;
-                      setCurrentPage(nextPage);
-                      setRemoteItems([]);
-                      loadItems(nextPage, query, false);
-                    }
-                  }}
-                  disabled={!hasMore || loading}
-                  className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                    !hasMore || loading
-                      ? 'bg-white/10 text-white/40 cursor-not-allowed'
-                      : 'bg-[#017158] text-white hover:bg-[#015a45]'
-                  }`}
-                >
-                  Próxima →
-                </button>
-              </div>
-            </div>
-          )}
         </PopoverContent>
       </Popover>
     </div>
