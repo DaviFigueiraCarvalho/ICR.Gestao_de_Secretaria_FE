@@ -388,25 +388,38 @@ const handleSave = async () => {
                   className="col-span-2"
                   label="País"
                   selectedId={form.countryCode}
-                  defaultSelectedId={DEFAULT_COUNTRY_CODE}
+                  selectedItem={countrySelectItems.find(c => c.id === form.countryCode) || null}
                   onSelect={(id) => {
                     const countryCode = typeof id === 'string' ? id : DEFAULT_COUNTRY_CODE;
                     setForm((prev) => ({ ...prev, countryCode, postalCode: '' }));
                   }}
-                  items={countrySelectItems}
+                  fetchItems={async (page, query) => {
+                    const filtered = countrySelectItems.filter(c => 
+                      c.name.toLowerCase().includes(query.toLowerCase())
+                    );
+                    const start = (page - 1) * 10;
+                    const end = start + 10;
+                    return filtered.slice(start, end);
+                  }}
                   placeholder="Selecione um país"
                   required
                 />
                 <SmartSelect
                   label="Area"
                   selectedId={form.federationId}
+                  selectedItem={federations.find(f => f.id === form.federationId) ? { id: federations.find(f => f.id === form.federationId)!.id, name: federations.find(f => f.id === form.federationId)!.name } : null}
                   onSelect={(id) => {
                     if (isFederatedScope) return;
                     setF('federationId', typeof id === 'number' ? id : '');
                   }}
-                  items={isFederatedScope && lockedFederationId
-                    ? federations.filter((f) => f.id === lockedFederationId).map((f) => ({ id: f.id, name: f.name }))
-                    : federations.map((f) => ({ id: f.id, name: f.name }))}
+                  fetchItems={async (page, query) => {
+                    const params = new URLSearchParams();
+                    params.append('pageNumber', String(page));
+                    params.append('pageQuantity', '10');
+                    if (query) params.append('query', query);
+                    const result = await fetchApi<Federation[]>(`/api/federations?${params}`);
+                    return Array.isArray(result) ? result.map(f => ({ id: f.id, name: f.name })) : [];
+                  }}
                   placeholder="Selecione uma área"
                   required
                   disabled={isFederatedScope}
@@ -414,8 +427,16 @@ const handleSave = async () => {
                 <SmartSelect
                   label="Ministro"
                   selectedId={form.ministerId}
+                  selectedItem={ministers.find(m => m.id === form.ministerId) ? { id: ministers.find(m => m.id === form.ministerId)!.id, name: ministers.find(m => m.id === form.ministerId)!.memberName || ministers.find(m => m.id === form.ministerId)!.id.toString() } : null}
                   onSelect={(id) => setF('ministerId', typeof id === 'number' ? id : '')}
-                  items={ministers.map((m) => ({ id: m.id, name: m.memberName || m.id.toString() }))}
+                  fetchItems={async (page, query) => {
+                    const params = new URLSearchParams();
+                    params.append('pageNumber', String(page));
+                    params.append('pageQuantity', '10');
+                    if (query) params.append('query', query);
+                    const result = await fetchApi<Minister[]>(`/api/ministers?${params}`);
+                    return Array.isArray(result) ? result.map(m => ({ id: m.id, name: m.memberName || m.id.toString() })) : [];
+                  }}
                   placeholder="Selecione um ministro"
                 />
               </div>

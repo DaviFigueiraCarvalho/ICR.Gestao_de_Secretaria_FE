@@ -791,12 +791,20 @@ export default function Familias() {
                 <SmartSelect
                   label="Igreja *"
                   selectedId={form.churchId}
+                  selectedItem={scopedChurches.find(c => c.id === form.churchId) ? { id: scopedChurches.find(c => c.id === form.churchId)!.id, name: scopedChurches.find(c => c.id === form.churchId)!.name } : null}
                   onSelect={(id) => {
                     if (isLocalScope) return;
                     const churchId = typeof id === 'number' ? id : typeof id === 'string' ? parseInt(id) || '' : '';
                     handleChurchChange(churchId);
                   }}
-                  items={scopedChurches.map(c => ({ id: c.id, name: c.name }))}
+                  fetchItems={async (page, query) => {
+                    const params = new URLSearchParams();
+                    params.append('pageNumber', String(page));
+                    params.append('pageQuantity', '10');
+                    if (query) params.append('query', query);
+                    const result = await fetchApi<Church[]>(`/api/churches?${params}`);
+                    return Array.isArray(result) ? result.map(c => ({ id: c.id, name: `${c.id} - ${c.name}` })) : [];
+                  }}
                   placeholder="Selecione uma igreja"
                   required
                   disabled={isLocalScope}
@@ -804,8 +812,17 @@ export default function Familias() {
                 <SmartSelect
                   label="Célula"
                   selectedId={form.cellId}
+                  selectedItem={availableCells.find(c => c.id === form.cellId) ? { id: availableCells.find(c => c.id === form.cellId)!.id, name: availableCells.find(c => c.id === form.cellId)!.name } : null}
                   onSelect={id => setF('cellId', id)}
-                  items={availableCells.map(c => ({ id: c.id, name: c.name }))}
+                  fetchItems={async (page, query) => {
+                    const params = new URLSearchParams();
+                    params.append('pageNumber', String(page));
+                    params.append('pageQuantity', '10');
+                    if (query) params.append('query', query);
+                    if (form.churchId) params.append('churchId', String(form.churchId));
+                    const result = await fetchApi<Cell[]>(`/api/cells?${params}`);
+                    return Array.isArray(result) ? result.map(c => ({ id: c.id, name: `${c.id} - ${c.name}` })) : [];
+                  }}
                   placeholder={form.churchId ? 'Selecione uma célula' : 'Escolha uma igreja primeiro'}
                   disabled={!form.churchId}
                 />
@@ -855,8 +872,16 @@ export default function Familias() {
                             <SmartSelect
                               label="País do telefone"
                               selectedId={manDraft.phoneCountryCode}
+                              selectedItem={countrySelectItems.find(c => c.id === manDraft.phoneCountryCode) || null}
                               onSelect={(id) => setManDraft((prev) => ({ ...prev, phoneCountryCode: typeof id === 'string' ? id : DEFAULT_COUNTRY_CODE }))}
-                              items={countrySelectItems}
+                              fetchItems={async (page, query) => {
+                                const filtered = countrySelectItems.filter(c => 
+                                  c.name.toLowerCase().includes(query.toLowerCase())
+                                );
+                                const start = (page - 1) * 10;
+                                const end = start + 10;
+                                return filtered.slice(start, end);
+                              }}
                               placeholder="Selecione um país"
                               disabled={!createManMember}
                             />
@@ -1132,8 +1157,16 @@ export default function Familias() {
                             <SmartSelect
                               label="País do telefone"
                               selectedId={womanDraft.phoneCountryCode}
+                              selectedItem={countrySelectItems.find(c => c.id === womanDraft.phoneCountryCode) || null}
                               onSelect={(id) => setWomanDraft((prev) => ({ ...prev, phoneCountryCode: typeof id === 'string' ? id : DEFAULT_COUNTRY_CODE }))}
-                              items={countrySelectItems}
+                              fetchItems={async (page, query) => {
+                                const filtered = countrySelectItems.filter(c => 
+                                  c.name.toLowerCase().includes(query.toLowerCase())
+                                );
+                                const start = (page - 1) * 10;
+                                const end = start + 10;
+                                return filtered.slice(start, end);
+                              }}
                               placeholder="Selecione um país"
                               disabled={!createWomanMember}
                             />
@@ -1380,15 +1413,31 @@ export default function Familias() {
                   <SmartSelect
                     label="Marido"
                     selectedId={form.manId}
+                    selectedItem={scopedMembers.find(m => m.id === form.manId) ? { id: scopedMembers.find(m => m.id === form.manId)!.id, name: scopedMembers.find(m => m.id === form.manId)!.name } : null}
                     onSelect={id => setF('manId', id)}
-                    items={scopedMembers.map(m => ({ id: m.id, name: m.name }))}
+                    fetchItems={async (page, query) => {
+                      const params = new URLSearchParams();
+                      params.append('pageNumber', String(page));
+                      params.append('pageQuantity', '10');
+                      if (query) params.append('query', query);
+                      const result = await fetchApi<Member[]>(`/api/members?${params}`);
+                      return Array.isArray(result) ? result.map(m => ({ id: m.id, name: m.name })) : [];
+                    }}
                     placeholder="Selecione um membro"
                   />
                   <SmartSelect
                     label="Esposa"
                     selectedId={form.womanId}
+                    selectedItem={scopedMembers.find(m => m.id === form.womanId) ? { id: scopedMembers.find(m => m.id === form.womanId)!.id, name: scopedMembers.find(m => m.id === form.womanId)!.name } : null}
                     onSelect={id => setF('womanId', id)}
-                    items={scopedMembers.map(m => ({ id: m.id, name: m.name }))}
+                    fetchItems={async (page, query) => {
+                      const params = new URLSearchParams();
+                      params.append('pageNumber', String(page));
+                      params.append('pageQuantity', '10');
+                      if (query) params.append('query', query);
+                      const result = await fetchApi<Member[]>(`/api/members?${params}`);
+                      return Array.isArray(result) ? result.map(m => ({ id: m.id, name: m.name })) : [];
+                    }}
                     placeholder="Selecione um membro"
                   />
                 </div>

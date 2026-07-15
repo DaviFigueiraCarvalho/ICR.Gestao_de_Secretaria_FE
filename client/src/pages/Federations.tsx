@@ -20,6 +20,7 @@ export default function Federacoes() {
   const [editItem, setEditItem] = useState<Federation | null>(null);
   const [form, setForm] = useState<FederacaoForm>({ name: '', ministerId: '' });
   const [saving, setSaving] = useState(false);
+  const [members, setMembers] = useState<Member[]>([]);
 
   const load = async () => {
     setIsLoading(true);
@@ -35,6 +36,7 @@ export default function Federacoes() {
       }
 
       setData(settledValue(federationsResult) ?? []);
+      setMembers(settledValue(membersResult) ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar Areas');
     } finally {
@@ -141,26 +143,26 @@ export default function Federacoes() {
                   placeholder="Nome da área"
                 />
               </div>
-                          <SmartSelect
-                              label="Ministro"
-                              selectedId={form.ministerId}
-                              onSelect={(id) =>
-                                  setForm({
-                                      ...form,
-                                      ministerId: id === '' ? '' : Number(id),
-                                  })
-                              }                              placeholder="Selecione um ministro"
-                              fetchItems={async (page, query) => {
-                                  const members = await fetchApi<Member[]>(
-                                      `/api/members?pageNumber=${page}&pageQuantity=10&querySearch=${encodeURIComponent(query)}`
-                                  );
-
-                                  return members.map(m => ({
-                                      id: m.id,
-                                      name: m.name
-                                  }));
-                              }}
-                          />
+                           <SmartSelect
+                               label="Ministro"
+                               selectedId={form.ministerId}
+                               selectedItem={members.find(m => m.id === form.ministerId) ? { id: members.find(m => m.id === form.ministerId)!.id, name: members.find(m => m.id === form.ministerId)!.name } : null}
+                               onSelect={(id) =>
+                                   setForm({
+                                       ...form,
+                                       ministerId: id === '' ? '' : Number(id),
+                                   })
+                               }
+                               placeholder="Selecione um ministro"
+                               fetchItems={async (page, query) => {
+                                   const params = new URLSearchParams();
+                                   params.append('pageNumber', String(page));
+                                   params.append('pageQuantity', '10');
+                                   if (query) params.append('query', query);
+                                   const result = await fetchApi<Member[]>(`/api/members?${params}`);
+                                   return Array.isArray(result) ? result.map(m => ({ id: m.id, name: m.name })) : [];
+                               }}
+                           />
             </div>
 
             <div className="flex gap-3 justify-end mt-6">

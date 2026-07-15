@@ -792,6 +792,7 @@ export default function Repasses() {
                 <SmartSelect
                   label="Igreja"
                   selectedId={form.churchId}
+                  selectedItem={churches.find(c => c.id === form.churchId) ? { id: churches.find(c => c.id === form.churchId)!.id, name: churches.find(c => c.id === form.churchId)!.name } : null}
                   onSelect={(id) => setForm({ ...form, churchId: id === '' ? '' : Number(id) })}
                   placeholder="Selecione a igreja"
                   fetchItems={fetchChurchItems}

@@ -415,19 +415,35 @@ export default function Ministros() {
                   className="col-span-2"
                   label="País"
                   selectedId={form.countryCode}
+                  selectedItem={countrySelectItems.find(c => c.id === form.countryCode) || null}
                   onSelect={(id) => {
                     const countryCode = typeof id === 'string' ? id : DEFAULT_COUNTRY_CODE;
                     setForm((prev) => ({ ...prev, countryCode, postalCode: '' }));
                   }}
-                  items={countrySelectItems}
+                  fetchItems={async (page, query) => {
+                    const filtered = countrySelectItems.filter(c => 
+                      c.name.toLowerCase().includes(query.toLowerCase())
+                    );
+                    const start = (page - 1) * 10;
+                    const end = start + 10;
+                    return filtered.slice(start, end);
+                  }}
                   placeholder="Selecione um país"
                   required
                 />
                 <SmartSelect
                   label="Membro *"
                   selectedId={form.memberId}
+                  selectedItem={members.find(m => m.id === form.memberId) ? { id: members.find(m => m.id === form.memberId)!.id, name: members.find(m => m.id === form.memberId)!.name } : null}
                   onSelect={(id) => setF('memberId', typeof id === 'number' ? id : '')}
-                  items={members.map((m) => ({ id: m.id, name: m.name }))}
+                  fetchItems={async (page, query) => {
+                    const params = new URLSearchParams();
+                    params.append('pageNumber', String(page));
+                    params.append('pageQuantity', '10');
+                    if (query) params.append('query', query);
+                    const result = await fetchApi<Member[]>(`/api/members?${params}`);
+                    return Array.isArray(result) ? result.map(m => ({ id: m.id, name: m.name })) : [];
+                  }}
                   placeholder="Selecione um membro"
                   required
                 />

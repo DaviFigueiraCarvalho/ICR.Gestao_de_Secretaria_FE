@@ -11,16 +11,13 @@ export interface SmartSelectOption {
 interface SmartSelectProps {
   label: string;
   selectedId: number | string | '';
+  selectedItem: SmartSelectOption | null;
   onSelect: (id: number | string | '') => void;
   placeholder?: string;
   required?: boolean;
   disabled?: boolean;
   className?: string;
-  // API function for remote search with pagination
-  fetchItems?: (page: number, query: string) => Promise<SmartSelectOption[]>;
-  // Legacy support for local items (if fetchItems not provided)
-  items?: SmartSelectOption[];
-  defaultSelectedId?: number | string;
+  fetchItems: (page: number, query: string) => Promise<SmartSelectOption[]>;
 }
 
 const PAGE_SIZE = 10;
@@ -29,110 +26,59 @@ const SEARCH_DEBOUNCE_MS = 300;
 export default function SmartSelect({
   label,
   selectedId,
+  selectedItem,
   onSelect,
   placeholder = 'Selecione...',
   required = false,
   disabled = false,
   className = '',
   fetchItems,
-  items = [],
-  defaultSelectedId,
 }: SmartSelectProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [remoteItems, setRemoteItems] = useState<SmartSelectOption[]>([]);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [items, setItems] = useState<SmartSelectOption[]>([]);
+  const [page, setPage] = useState(1);
   const [loading, setLoading] = useState(false);
   const [hasMore, setHasMore] = useState(true);
-  const [selectedItem, setSelectedItem] = useState<SmartSelectOption | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [itemsPerPage, setItemsPerPage] = useState(PAGE_SIZE);
 
-  // Debounce timer for search
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
-  // Lock to prevent multiple simultaneous requests
-  const loadingLockRef = useRef(false);
-  // Command list ref for scroll detection
   const commandListRef = useRef<HTMLDivElement>(null);
-  // Track if items have been loaded to prevent unnecessary reloads
-  const hasLoadedRef = useRef(false);
+  const pageRef = useRef(page);
+  const queryRef = useRef(query);
 
-  const resolvedSelectedId = selectedId === '' || selectedId == null ? defaultSelectedId ?? '' : selectedId;
-
-  // Initialize selected item from local items or fetch from API when component mounts or selectedId changes
+  // Keep refs in sync with state
   useEffect(() => {
-    if (!resolvedSelectedId) return;
+    pageRef.current = page;
+  }, [page]);
 
-    // First try to find in local items
-    const foundLocally = items.find(item => item.id === resolvedSelectedId);
-    if (foundLocally) {
-      setSelectedItem(foundLocally);
-      return;
-    }
+  useEffect(() => {
+    queryRef.current = query;
+  }, [query]);
 
-    // If not found locally and we have fetchItems, fetch the specific item
-    if (fetchItems && resolvedSelectedId) {
-      const loadSelectedItem = async () => {
-        try {
-          // Fetch just one item by ID - most APIs support this pattern
-          const results = await fetchItems(1, String(resolvedSelectedId));
-          const found = results.find(item => item.id === resolvedSelectedId);
-          if (found) {
-            setSelectedItem(found);
-          }
-        } catch (err) {
-          console.error('[SmartSelect] Error loading selected item:', err);
-        }
-      };
-      loadSelectedItem();
-    }
-  }, [resolvedSelectedId, items, fetchItems]);
-
-  // Fetch items from API or use local items
-  const loadItems = async (page: number, searchQuery: string, append: boolean = false) => {
-    // Prevent multiple simultaneous requests
-    if (loadingLockRef.current) {
-      return;
-    }
-
+  // Fetch items from API
+  const loadItems = async (pageNum: number, searchQuery: string, append: boolean = false) => {
     try {
-      loadingLockRef.current = true;
       setLoading(true);
       setError(null);
 
-      if (fetchItems) {
-        // Use remote API
-        const newItems = await fetchItems(page, searchQuery);
+      const newItems = await fetchItems(pageNum, searchQuery);
 
-        // Detect if we've reached the end of pagination
-        // If we get less than PAGE_SIZE items, we've reached the end
-        const hasMoreResults = newItems.length >= PAGE_SIZE;
-        setHasMore(hasMoreResults);
-        setItemsPerPage(newItems.length);
+      // Detect if we've reached the end of pagination
+      const hasMoreResults = newItems.length >= PAGE_SIZE;
+      setHasMore(hasMoreResults);
 
-        if (append) {
-          // Infinite scroll: append new items
-          setRemoteItems(prev => [...prev, ...newItems]);
-        } else {
-          // New search: replace items
-          setRemoteItems(newItems);
-          hasLoadedRef.current = true;
-        }
-      } else if (items.length > 0) {
-        // Fallback to local items if fetchItems not provided
-        const normQuery = normalizeText(searchQuery);
-        const filtered = !searchQuery.trim()
-          ? items
-          : items.filter(item => normalizeText(item.name).includes(normQuery));
-
-        setRemoteItems(filtered);
-        setHasMore(false);
+      if (append) {
+        // Infinite scroll: append new items
+        setItems(prev => [...prev, ...newItems]);
+      } else {
+        // New search: replace items
+        setItems(newItems);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar itens');
       console.error('[SmartSelect] Error loading items:', err);
     } finally {
-      loadingLockRef.current = false;
       setLoading(false);
     }
   };
@@ -146,14 +92,12 @@ export default function SmartSelect({
       clearTimeout(debounceTimerRef.current);
     }
 
-    // Immediately reset state to allow new search
-    hasLoadedRef.current = false;
-    setCurrentPage(1);
+    // Reset pagination for new search
+    setPage(1);
     setHasMore(true);
 
     // Set new debounce timer
     debounceTimerRef.current = setTimeout(() => {
-      console.log('[SmartSelect] Search debounce triggered, query:', newQuery);
       loadItems(1, newQuery, false);
     }, SEARCH_DEBOUNCE_MS);
   };
@@ -162,15 +106,13 @@ export default function SmartSelect({
   const handleOpenChange = (newOpen: boolean) => {
     setOpen(newOpen);
 
-    if (newOpen && !loading) {
-      console.log('[SmartSelect] Dropdown opened, loading initial items');
-      // Only reload if we haven't loaded items yet for this query
-      if (!hasLoadedRef.current || remoteItems.length === 0) {
-        setRemoteItems([]);
-        setCurrentPage(1);
-        setHasMore(true);
-        loadItems(1, query, false);
-      }
+    if (newOpen) {
+      // Reset state and load initial items
+      setItems([]);
+      setPage(1);
+      setHasMore(true);
+      setError(null);
+      loadItems(1, query, false);
     }
   };
 
@@ -179,23 +121,20 @@ export default function SmartSelect({
     const target = e.currentTarget;
     const isNearEnd = target.scrollHeight - target.scrollTop - target.clientHeight < 100;
 
-    if (isNearEnd && hasMore && !loading && !loadingLockRef.current) {
-      console.log('[SmartSelect] Near end of list, loading next page:', currentPage + 1);
-      const nextPage = currentPage + 1;
-      setCurrentPage(nextPage);
-      loadItems(nextPage, query, true);
+    if (isNearEnd && hasMore && !loading) {
+      const nextPage = pageRef.current + 1;
+      setPage(nextPage);
+      loadItems(nextPage, queryRef.current, true);
     }
   };
 
   // Handle item selection
   const handleSelect = (item: SmartSelectOption) => {
-    console.log('[SmartSelect] Item selected:', item.id);
     onSelect(item.id);
-    setSelectedItem(item);
     setOpen(false);
     setQuery('');
-    setRemoteItems([]);
-    setCurrentPage(1);
+    setItems([]);
+    setPage(1);
     setHasMore(true);
   };
 
@@ -207,9 +146,6 @@ export default function SmartSelect({
       }
     };
   }, []);
-
-  // Display items (remote if available, otherwise selected local item)
-  const displayItems = remoteItems.length > 0 ? remoteItems : (selectedItem ? [selectedItem] : []);
 
   return (
     <div className={`relative ${className}`}>
@@ -234,11 +170,13 @@ export default function SmartSelect({
                   className="h-4 w-6 rounded-[2px] object-cover flex-shrink-0"
                 />
               )}
-              <span className="truncate">{selectedItem ? selectedItem.name : placeholder}</span>
+              <span className="truncate">
+                {selectedItem ? selectedItem.name : placeholder}
+              </span>
             </span>
           </button>
         </PopoverTrigger>
-          <PopoverContent className="w-full p-0 flex flex-col">
+        <PopoverContent className="w-full p-0 flex flex-col">
           <Command className="flex-1" shouldFilter={false}>
             <CommandInput
               value={query}
@@ -251,14 +189,14 @@ export default function SmartSelect({
             >
               {error ? (
                 <div className="px-4 py-2 text-red-400 text-sm">{error}</div>
-              ) : loading && remoteItems.length === 0 ? (
+              ) : loading && items.length === 0 ? (
                 <div className="px-4 py-6 text-center text-white/60 text-sm">
                   <div className="inline-block animate-spin rounded-full h-4 w-4 border-2 border-[#017158] border-r-transparent"></div>
                   <div className="mt-2">Carregando...</div>
                 </div>
-              ) : remoteItems.length > 0 ? (
+              ) : items.length > 0 ? (
                 <>
-                  {remoteItems.map(option => (
+                  {items.map(option => (
                     <CommandItem
                       key={`${option.id}`}
                       onSelect={() => handleSelect(option)}
@@ -298,12 +236,4 @@ export default function SmartSelect({
       </Popover>
     </div>
   );
-}
-
-// Normalize text for comparison (remove accents and convert to lowercase)
-export function normalizeText(value: string): string {
-    return value
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .toLowerCase();
 }

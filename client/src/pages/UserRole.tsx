@@ -483,6 +483,7 @@ export default function Usuarios() {
                 <SmartSelect
                   label="Membro Vinculado"
                   selectedId={form.memberId}
+                  selectedItem={members.find(m => m.id === form.memberId) ? { id: members.find(m => m.id === form.memberId)!.id, name: members.find(m => m.id === form.memberId)!.name } : null}
                   onSelect={(id) => setForm((prev) => ({ ...prev, memberId: id === '' ? '' : Number(id) }))}
                   placeholder="Selecione um membro"
                   fetchItems={fetchMemberItems}

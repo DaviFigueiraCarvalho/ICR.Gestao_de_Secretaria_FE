@@ -399,8 +399,16 @@ export default function Celulas() {
                 <SmartSelect
                   label="Igreja"
                   selectedId={form.churchId}
+                  selectedItem={churches.find(c => c.id === form.churchId) ? { id: churches.find(c => c.id === form.churchId)!.id, name: `${churches.find(c => c.id === form.churchId)!.id} - ${churches.find(c => c.id === form.churchId)!.name}` } : null}
                   onSelect={(id) => setForm({ ...form, churchId: id === '' ? '' : Number(id) })}
-                  items={churchOptions}
+                  fetchItems={async (page, query) => {
+                    const params = new URLSearchParams();
+                    params.append('pageNumber', String(page));
+                    params.append('pageQuantity', '10');
+                    if (query) params.append('query', query);
+                    const result = await fetchApi<Church[]>(`/api/churches?${params}`);
+                    return Array.isArray(result) ? result.map(c => ({ id: c.id, name: `${c.id} - ${c.name}` })) : [];
+                  }}
                   placeholder="Selecione uma igreja"
                   disabled={isLocalScope}
                 />
@@ -408,8 +416,16 @@ export default function Celulas() {
               <SmartSelect
                 label="Responsável"
                 selectedId={form.responsibleId}
+                selectedItem={scopedMembers.find(m => m.id === form.responsibleId) ? { id: scopedMembers.find(m => m.id === form.responsibleId)!.id, name: scopedMembers.find(m => m.id === form.responsibleId)!.name } : null}
                 onSelect={(id) => setForm({ ...form, responsibleId: id === '' ? '' : Number(id) })}
-                items={scopedMembers.map((m) => ({ id: m.id, name: m.name }))}
+                fetchItems={async (page, query) => {
+                  const params = new URLSearchParams();
+                  params.append('pageNumber', String(page));
+                  params.append('pageQuantity', '10');
+                  if (query) params.append('query', query);
+                  const result = await fetchApi<Member[]>(`/api/members?${params}`);
+                  return Array.isArray(result) ? result.map(m => ({ id: m.id, name: m.name })) : [];
+                }}
                 placeholder="Selecione um responsável"
               />
             </div>

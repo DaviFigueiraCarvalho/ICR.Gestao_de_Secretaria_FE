@@ -816,8 +816,16 @@ export default function Membros() {
                   <SmartSelect
                     label="País do Telefone"
                     selectedId={form.phoneCountryCode}
+                    selectedItem={countrySelectItems.find(c => c.id === form.phoneCountryCode) || null}
                     onSelect={(id) => setF('phoneCountryCode', typeof id === 'string' ? id : DEFAULT_COUNTRY_CODE)}
-                    items={countrySelectItems}
+                    fetchItems={async (page, query) => {
+                      const filtered = countrySelectItems.filter(c => 
+                        c.name.toLowerCase().includes(query.toLowerCase())
+                      );
+                      const start = (page - 1) * 10;
+                      const end = start + 10;
+                      return filtered.slice(start, end);
+                    }}
                     placeholder="Selecione um país"
                   />
                   <div>
@@ -846,6 +854,7 @@ export default function Membros() {
                 <SmartSelect
                   label="Família"
                   selectedId={form.familyId}
+                  selectedItem={families.find(f => f.id === form.familyId) ? { id: families.find(f => f.id === form.familyId)!.id, name: families.find(f => f.id === form.familyId)!.name } : null}
                   onSelect={(id) => setF('familyId', id)}
                   fetchItems={fetchFamilies}
                   placeholder="Selecione uma família"
@@ -922,11 +931,19 @@ export default function Membros() {
                       className="col-span-2"
                       label="País"
                       selectedId={ministerForm.countryCode}
+                      selectedItem={countrySelectItems.find(c => c.id === ministerForm.countryCode) || null}
                       onSelect={(id) => {
                         const countryCode = typeof id === 'string' ? id : DEFAULT_COUNTRY_CODE;
                         setMinisterForm((prev) => ({ ...prev, countryCode, postalCode: '' }));
                       }}
-                      items={countrySelectItems}
+                      fetchItems={async (page, query) => {
+                        const filtered = countrySelectItems.filter(c => 
+                          c.name.toLowerCase().includes(query.toLowerCase())
+                        );
+                        const start = (page - 1) * 10;
+                        const end = start + 10;
+                        return filtered.slice(start, end);
+                      }}
                       placeholder="Selecione um país"
                     />
                     <div>
