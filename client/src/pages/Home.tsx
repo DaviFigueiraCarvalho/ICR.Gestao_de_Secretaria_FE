@@ -341,13 +341,6 @@ export default function Home() {
           </div>
         )}
       </div>
-
-      <div className="fixed bottom-6 right-6">
-        <button className={`${isLight ? 'bg-white border-[#99cfc0] text-[#2e6f5f] hover:text-[#0f5f4d]' : 'bg-[#2b2b2b] border-[#017158]/40 text-white/70 hover:text-white'} border rounded-xl p-3 flex items-center gap-2 hover:border-[#017158] transition-colors shadow-lg`}>
-          <span className="material-icons text-[#017158]">chat</span>
-          <span className="text-sm font-['Nunito']">Entre em contato<br />para suporte</span>
-        </button>
-      </div>
     </ICRLayout>
   );
 }

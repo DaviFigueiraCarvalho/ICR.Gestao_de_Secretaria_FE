@@ -317,49 +317,51 @@ export default function Ministros() {
   );
 
   const ministerCard = selectedMinister ? (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-2xl rounded-3xl border border-white/10 bg-[#202020] shadow-2xl">
-        <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
-          <div>
-            <p className="text-white/50 text-xs uppercase tracking-[0.2em] font-['Nunito']">Card do ministro</p>
-            <h3 className="text-white text-2xl font-['Nunito'] font-semibold">{selectedMinister.memberName || 'Ministro'}</h3>
+    <div className="fixed inset-0 z-50 overflow-y-auto">
+      <div className="min-h-full flex items-start justify-center p-4">
+        <div className="w-full max-w-2xl rounded-3xl border border-white/10 bg-[#202020] shadow-2xl my-4 max-h-[calc(100vh-2rem)] overflow-y-auto">
+          <div className="flex items-center justify-between border-b border-white/10 px-6 py-4 sticky top-0 bg-[#202020] rounded-t-3xl z-10">
+            <div>
+              <p className="text-white/50 text-xs uppercase tracking-[0.2em] font-['Nunito']">Card do ministro</p>
+              <h3 className="text-white text-2xl font-['Nunito'] font-semibold">{selectedMinister.memberName || 'Ministro'}</h3>
+            </div>
+            <button onClick={() => setSelectedMinister(null)} className="text-white/50 hover:text-white transition-colors">
+              <span className="material-icons">close</span>
+            </button>
           </div>
-          <button onClick={() => setSelectedMinister(null)} className="text-white/50 hover:text-white transition-colors">
-            <span className="material-icons">close</span>
-          </button>
-        </div>
 
-        <div className="grid gap-4 px-6 py-6 md:grid-cols-[1.2fr_0.8fr]">
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="text-white/50 text-xs uppercase tracking-[0.2em] font-['Nunito']">Status</p>
-                  <p className="text-white text-lg font-['Nunito']">{getMinisterCoverageLabel(selectedMinister)}</p>
+          <div className="grid gap-4 px-6 py-6 md:grid-cols-[1.2fr_0.8fr]">
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-white/50 text-xs uppercase tracking-[0.2em] font-['Nunito']">Status</p>
+                    <p className="text-white text-lg font-['Nunito']">{getMinisterCoverageLabel(selectedMinister)}</p>
+                  </div>
+                  <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${getMinisterCoverageBadgeClass(selectedMinister)}`}>
+                    {getMinisterCoverageLabel(selectedMinister)}
+                  </span>
                 </div>
-                <span className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${getMinisterCoverageBadgeClass(selectedMinister)}`}>
-                  {getMinisterCoverageLabel(selectedMinister)}
-                </span>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-2">
+                <InfoTile label="Telefone" value={getPhoneDisplay(selectedMinister.memberPhone || selectedMinister.member?.cellPhone)} />
+                <InfoTile label="E-mail" value={selectedMinister.email || '-'} />
+                <InfoTile label="Nascimento" value={selectedMinister.memberBirthday ? new Date(selectedMinister.memberBirthday).toLocaleDateString('pt-BR') : '-'} />
+                <InfoTile label="Casamento" value={selectedMinister.memberWeddingDate ? new Date(selectedMinister.memberWeddingDate).toLocaleDateString('pt-BR') : '-'} />
+                <InfoTile label="CPF" value={selectedMinister.cpf || '-'} />
+                <InfoTile label="Validade da carteira" value={selectedMinister.cardValidity ? new Date(selectedMinister.cardValidity).toLocaleDateString('pt-BR') : '-'} />
               </div>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <InfoTile label="Telefone" value={getPhoneDisplay(selectedMinister.memberPhone || selectedMinister.member?.cellPhone)} />
-              <InfoTile label="E-mail" value={selectedMinister.email || '-'} />
-              <InfoTile label="Nascimento" value={selectedMinister.memberBirthday ? new Date(selectedMinister.memberBirthday).toLocaleDateString('pt-BR') : '-'} />
-              <InfoTile label="Casamento" value={selectedMinister.memberWeddingDate ? new Date(selectedMinister.memberWeddingDate).toLocaleDateString('pt-BR') : '-'} />
-              <InfoTile label="CPF" value={selectedMinister.cpf || '-'} />
-              <InfoTile label="Validade da carteira" value={selectedMinister.cardValidity ? new Date(selectedMinister.cardValidity).toLocaleDateString('pt-BR') : '-'} />
+            <div className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+              <InfoTile label="Igreja" value={selectedMinister.churchMemberName || '-'} compact />
+              <InfoTile label="Federação" value={selectedMinister.federationMemberName || '-'} compact />
+              <InfoTile label="Ordenação Presbítero" value={selectedMinister.presbiterOrdinationDate ? new Date(selectedMinister.presbiterOrdinationDate).toLocaleDateString('pt-BR') : '-'} compact />
+              <InfoTile label="Ordenação a Pastor" value={selectedMinister.ministerOrdinationDate ? new Date(selectedMinister.ministerOrdinationDate).toLocaleDateString('pt-BR') : '-'} compact />
+              <InfoTile label="Endereço" value={selectedMinister.address ? [selectedMinister.address.street, selectedMinister.address.number, selectedMinister.address.complement, selectedMinister.address.city, selectedMinister.address.state, selectedMinister.address.countyOrRegion].filter(Boolean).join(', ') : '-'} compact />
+              <InfoTile label="Código postal" value={selectedMinister.address?.postalCode || '-'} compact />
             </div>
-          </div>
-
-          <div className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
-            <InfoTile label="Igreja" value={selectedMinister.churchMemberName || '-'} compact />
-            <InfoTile label="Federação" value={selectedMinister.federationMemberName || '-'} compact />
-            <InfoTile label="Ordenação Presbítero" value={selectedMinister.presbiterOrdinationDate ? new Date(selectedMinister.presbiterOrdinationDate).toLocaleDateString('pt-BR') : '-'} compact />
-            <InfoTile label="Ordenação a Pastor" value={selectedMinister.ministerOrdinationDate ? new Date(selectedMinister.ministerOrdinationDate).toLocaleDateString('pt-BR') : '-'} compact />
-            <InfoTile label="Endereço" value={selectedMinister.address ? [selectedMinister.address.street, selectedMinister.address.number, selectedMinister.address.complement, selectedMinister.address.city, selectedMinister.address.state, selectedMinister.address.countyOrRegion].filter(Boolean).join(', ') : '-'} compact />
-            <InfoTile label="Código postal" value={selectedMinister.address?.postalCode || '-'} compact />
           </div>
         </div>
       </div>

@@ -5,6 +5,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import { canAccessPathByScope, getScopeLevel } from '../lib/scope-access';
 import { toast } from 'sonner';
 import icrLogo from '../assets/icr-logo.svg';
+import SupportButton from './SupportButton';
 
 const ICR_LOGO = icrLogo;
 
@@ -327,6 +328,8 @@ export default function ICRLayout({ children, title }: ICRLayoutProps) {
         )}
         <div className="p-2 sm:p-4 lg:p-6 w-full">{children}</div>
       </main>
+
+      <SupportButton />
     </div>
   );
 }
