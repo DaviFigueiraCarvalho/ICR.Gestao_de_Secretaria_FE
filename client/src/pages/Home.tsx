@@ -45,6 +45,13 @@ export default function Home() {
     userFederationId,
   } = useDashboardScope();
 
+  // Temporary debug logs - remove after investigation
+  console.log('🏠 [Home] scopeLevel:', scopeLevel);
+  console.log('🏠 [Home] selectedScopeType:', selectedScopeType);
+  console.log('🏠 [Home] selectedChurchId:', selectedChurchId);
+  console.log('🏠 [Home] dashboard data:', dashboard.data);
+  console.log('🏠 [Home] dashboard keys:', dashboard.data ? Object.keys(dashboard.data) : []);
+
   const currentDashboard = dashboard.data;
 
   useEffect(() => {
@@ -147,9 +154,18 @@ export default function Home() {
       scopes: ['church'],
       title: 'Familias Células e Membros Locais',
       cards: [
-        { label: 'Famílias', value: currentDashboard?.totalFamilies ?? currentDashboard?.localFamilies ?? 0 },
-        { label: 'Células', value: currentDashboard?.totalCells ?? currentDashboard?.localCells ?? 0 },
-        { label: 'Membros', value: currentDashboard?.totalMembers ?? currentDashboard?.localMembers ?? 0 },
+        { 
+          label: 'Famílias', 
+          value: currentDashboard?.localFamilies ?? currentDashboard?.totalFamilies ?? 0 
+        },
+        { 
+          label: 'Células', 
+          value: currentDashboard?.localCells ?? currentDashboard?.totalCells ?? 0 
+        },
+        { 
+          label: 'Membros', 
+          value: currentDashboard?.localMembers ?? currentDashboard?.totalMembers ?? 0 
+        },
       ],
     },
   ];

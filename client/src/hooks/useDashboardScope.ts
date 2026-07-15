@@ -256,6 +256,14 @@ export function useDashboardScope() {
         setScopeNote(endpoints.areaBackendNote ?? null);
       }
 
+      console.log('🔍 [Dashboard] Loading dashboard:', {
+        scopeLevel,
+        selectedScopeType,
+        selectedChurchId,
+        selectedFederationId,
+        endpoint: endpoints.dashboard,
+      });
+
       const [dashboardResult, classesResult, rolesResult] = await Promise.allSettled([
         fetchApi<DashboardNational>(endpoints.dashboard),
         fetchApi<unknown>(endpoints.classes),
@@ -264,8 +272,20 @@ export function useDashboardScope() {
 
       if (cancelled) return;
 
+      const dashboardData = settledValue(dashboardResult);
+      
+      console.log('🔍 [Dashboard] Response received:', {
+        scopeLevel,
+        selectedScopeType,
+        selectedChurchId,
+        endpoint: endpoints.dashboard,
+        status: dashboardResult.status,
+        data: dashboardData,
+        keys: dashboardData ? Object.keys(dashboardData) : [],
+      });
+
       setDashboard({
-        data: settledValue(dashboardResult) ?? null,
+        data: dashboardData ?? null,
         loading: false,
         error: dashboardResult.status === 'rejected'
           ? formatError(dashboardResult.reason, 'Erro ao carregar dashboard')
@@ -312,7 +332,7 @@ export function useDashboardScope() {
 
   const isViewReady = useMemo(() => {
     if (scopeLevel === 'local') {
-      return typeof user?.churchId === 'number';
+      return typeof toNumber(user?.churchId) === 'number';
     }
 
     if (selectedScopeType === 'national') return true;
@@ -350,3 +370,9 @@ export function useDashboardScope() {
     userFederationId: toNumber(user?.federationId),
   };
 }
+
+// Temporary debug function - remove after investigation
+export const debugDashboard = () => {
+  console.log('🔍 [Dashboard Debug] Temporary investigation logs');
+  console.log('Check the console for dashboard response data');
+};
