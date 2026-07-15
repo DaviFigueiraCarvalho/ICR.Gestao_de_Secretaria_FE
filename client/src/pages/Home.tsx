@@ -48,8 +48,6 @@ export default function Home() {
   const currentDashboard = dashboard.data;
 
   useEffect(() => {
-    if (scopeLevel === 'local') return;
-
     if (selectedScopeType === 'church') {
       if (typeof selectedChurchId !== 'number' && churchOptions[0]?.id) {
         setSelectedChurchId(churchOptions[0].id);

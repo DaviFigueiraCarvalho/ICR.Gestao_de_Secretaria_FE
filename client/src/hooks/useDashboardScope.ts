@@ -202,11 +202,15 @@ export function useDashboardScope() {
 
     if (typeof selectedChurchId !== 'number') return;
 
+    // Para usuários locais, não validar se a igreja está na lista de opções
+    // pois a lista pode estar vazia (filtros não carregados para escopo local)
+    if (scopeLevel === 'local') return;
+
     const isStillVisible = scopedChurchOptions.some((church) => church.id === selectedChurchId);
     if (!isStillVisible) {
       setSelectedChurchId(undefined);
     }
-  }, [scopedChurchOptions, selectedChurchId, selectedScopeType]);
+  }, [scopedChurchOptions, selectedChurchId, selectedScopeType, scopeLevel]);
 
   const selectedScopeLabel = useMemo(() => {
     if (selectedScopeType === 'national') return 'Nacional';
