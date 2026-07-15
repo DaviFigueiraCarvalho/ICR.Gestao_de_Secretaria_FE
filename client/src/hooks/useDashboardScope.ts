@@ -86,7 +86,14 @@ export function useDashboardScope() {
   const { user } = useICRAuth();
   const scopeLevel = getScopeLevel(user?.scope, user?.username);
 
-  const [selectedScopeType, setSelectedScopeType] = useState<DashboardScopeType>('national');
+  // Initialize scope type based on user's actual scope to avoid unwanted national endpoint calls
+  const getInitialScopeType = (): DashboardScopeType => {
+    if (scopeLevel === 'local') return 'church';
+    if (scopeLevel === 'federated') return 'area';
+    return 'national';
+  };
+
+  const [selectedScopeType, setSelectedScopeType] = useState<DashboardScopeType>(getInitialScopeType);
   const [selectedFederationId, setSelectedFederationId] = useState<number | undefined>(undefined);
   const [selectedChurchId, setSelectedChurchId] = useState<number | undefined>(undefined);
 

@@ -150,7 +150,6 @@ export default function SmartSelect({
     hasLoadedRef.current = false;
     setCurrentPage(1);
     setHasMore(true);
-    setRemoteItems([]);
 
     // Set new debounce timer
     debounceTimerRef.current = setTimeout(() => {
@@ -239,8 +238,8 @@ export default function SmartSelect({
             </span>
           </button>
         </PopoverTrigger>
-        <PopoverContent className="w-full p-0 flex flex-col">
-          <Command className="flex-1">
+          <PopoverContent className="w-full p-0 flex flex-col">
+          <Command className="flex-1" shouldFilter={false}>
             <CommandInput
               value={query}
               onValueChange={handleSearchChange}

@@ -42,6 +42,7 @@ export default function Home() {
     scopeNote,
     isViewReady,
     isLoading,
+    userChurchId,
     userFederationId,
   } = useDashboardScope();
 
@@ -55,6 +56,10 @@ export default function Home() {
   const currentDashboard = dashboard.data;
 
   useEffect(() => {
+    // Only apply fallbacks for non-local users
+    // Local users should use the churchId/federationId from user context (set by useDashboardScope)
+    if (scopeLevel === 'local') return;
+
     if (selectedScopeType === 'church') {
       if (typeof selectedChurchId !== 'number' && churchOptions[0]?.id) {
         setSelectedChurchId(churchOptions[0].id);
@@ -92,7 +97,12 @@ export default function Home() {
 
     if (nextScopeType === 'church') {
       setSelectedFederationId(undefined);
-      setSelectedChurchId(churchOptions[0]?.id);
+      // For local users, use userChurchId directly instead of churchOptions
+      if (scopeLevel === 'local' && typeof userChurchId === 'number') {
+        setSelectedChurchId(userChurchId);
+      } else {
+        setSelectedChurchId(churchOptions[0]?.id);
+      }
       return;
     }
 
