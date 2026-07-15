@@ -88,6 +88,8 @@ export default function Familias() {
   const [editItem, setEditItem] = useState<Family | null>(null);
   const [showMembersModal, setShowMembersModal] = useState(false);
   const [selectedFamily, setSelectedFamily] = useState<Family | null>(null);
+  const [familyMembers, setFamilyMembers] = useState<Member[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
   const [form, setForm] = useState<FamiliaForm>({ name: '', churchId: '', cellId: '', manId: '', womanId: '', weddingDate: '' });
   const [createManMember, setCreateManMember] = useState(true);
   const [createWomanMember, setCreateWomanMember] = useState(true);
@@ -400,11 +402,6 @@ export default function Familias() {
     return members.filter((member) => member.familyId && allowedFamilyIds.has(member.familyId));
   }, [members, scopedFamilies]);
 
-  const selectedFamilyMembers = useMemo(() => {
-    if (!selectedFamily) return [];
-    return scopedMembers.filter((member) => member.familyId === selectedFamily.id);
-  }, [scopedMembers, selectedFamily]);
-
   useEffect(() => {
     if (isFederatedScope && typeof restrictions.lockedFederationId === 'number') {
       setSelectedFederationIds([restrictions.lockedFederationId]);
@@ -487,9 +484,32 @@ export default function Familias() {
     return createdMember.id;
   };
 
-  const openMembers = (item: Family) => {
+  const openMembers = async (item: Family) => {
     setSelectedFamily(item);
-    setShowMembersModal(true);
+    setMembersLoading(true);
+    setFamilyMembers([]);
+
+    try {
+      const result = await fetchApi<Member[]>(
+        `/api/members/family/${item.id}`
+      );
+
+      setFamilyMembers(Array.isArray(result) ? result : []);
+      setShowMembersModal(true);
+    }
+    catch (err) {
+      console.error(
+        'Erro ao carregar membros da família:',
+        err
+      );
+
+      toast.error(
+        'Erro ao carregar membros da família'
+      );
+    }
+    finally {
+      setMembersLoading(false);
+    }
   };
 
   const handleSave = async () => {
@@ -1404,13 +1424,17 @@ export default function Familias() {
               </button>
             </div>
 
-            {selectedFamilyMembers.length === 0 ? (
+            {membersLoading ? (
+              <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-6 text-center text-white/50 font-['Nunito'] text-sm">
+                Carregando membros...
+              </div>
+            ) : familyMembers.length === 0 ? (
               <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-6 text-center text-white/50 font-['Nunito'] text-sm">
                 Nenhum membro vinculado a esta família.
               </div>
             ) : (
               <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
-                {selectedFamilyMembers.map((member) => (
+                {familyMembers.map((member) => (
                   <div
                     key={member.id}
                     className={`rounded-lg px-4 py-3 flex items-center justify-between gap-3 border ${
