@@ -5,6 +5,7 @@ import ICRLayout from '../components/ICRLayout';
 import { useICRApi, Minister } from '../hooks/useICRApi';
 import { getMinisterCoverageBadgeClass, getMinisterCoverageLabel, resolveMinisterCoverageStatus, summarizeMinisterCoverage } from '../lib/minister-coverage';
 import { useSharedMinisterData } from '../hooks/useSharedMinisterData';
+import { formatDateOnly } from '../lib/date-utils';
 
 export default function MinistersInsurance() {
   const { fetchApi } = useICRApi();
@@ -31,14 +32,18 @@ export default function MinistersInsurance() {
     [data],
   );
 
-  const formatLongDate = (value: Date): string => {
-    const formatted = new Intl.DateTimeFormat('pt-BR', {
-      day: 'numeric',
-      month: 'long',
-      year: 'numeric',
-    }).format(value);
+  const getTodayDateOnly = (): string => {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  };
 
-    return `Vitória, ${formatted}`;
+  const formatLongDateOnly = (value: string): string => {
+    const [year, month, day] = value.split('-');
+    const monthName = new Intl.DateTimeFormat('pt-BR', { month: 'long' }).format(
+      new Date(Number(year), Number(month) - 1, 1),
+    );
+
+    return `Vitória, ${Number(day)} de ${monthName} de ${year}`;
   };
 const getPhoneDisplay = (
   phone?: Minister['memberPhone']
@@ -143,7 +148,7 @@ const getPhoneDisplay = (
     };
 
     const drawFooter = (y: number) => {
-      const dateText = formatLongDate(new Date());
+      const dateText = formatLongDateOnly(getTodayDateOnly());
       const signatureLineWidth = 72;
       const signatureCenterX = pageWidth / 2;
 
@@ -215,7 +220,7 @@ const getPhoneDisplay = (
       const cpf = normalizePdfText(minister.cpf || '-');
       const phone = normalizePdfText(getPhoneDisplay(minister.memberPhone) || '-');
       const email = normalizePdfText(minister.email || '-');
-      const birthDate = normalizePdfText(minister.memberBirthday ? new Date(minister.memberBirthday).toLocaleDateString('pt-BR') : '-');
+      const birthDate = normalizePdfText(formatDateOnly(minister.memberBirthday));
 
       const nameColumnWidth = columnWidths[0];
       const cpfColumnWidth = columnWidths[1];
@@ -303,7 +308,7 @@ const getPhoneDisplay = (
       const url = URL.createObjectURL(blob);
       blobUrlRef.current = url;
       setGeneratedPdfUrl(url);
-      setGeneratedPdfName(`seguro-ministros-${new Date().toISOString().slice(0, 10)}.pdf`);
+      setGeneratedPdfName(`seguro-ministros-${getTodayDateOnly()}.pdf`);
     } finally {
       setIsGeneratingPdf(false);
     }
@@ -329,7 +334,7 @@ const getPhoneDisplay = (
         CPF: minister.cpf || '-',
         Telefone: getPhoneDisplay(minister.memberPhone) || '-',
         'E-mail': minister.email || '-',
-        Nascimento: minister.memberBirthday ? new Date(minister.memberBirthday).toLocaleDateString('pt-BR') : '-',
+        Nascimento: formatDateOnly(minister.memberBirthday),
       }));
 
       const worksheet = XLSX.utils.json_to_sheet(excelData);
@@ -341,7 +346,7 @@ const getPhoneDisplay = (
         { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
       );
       const url = URL.createObjectURL(excelBlob);
-      const fileName = `seguro-ministros-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      const fileName = `seguro-ministros-${getTodayDateOnly()}.xlsx`;
 
       const anchor = document.createElement('a');
       anchor.href = url;
@@ -449,7 +454,7 @@ const getPhoneDisplay = (
                       <div className="pr-3">{minister.cpf || '-'}</div>
                       <div className="pr-3">  {getPhoneDisplay(minister.memberPhone || minister.member?.cellPhone)}</div>                      
                       <div className="pr-3 break-words">{minister.email || '-'}</div>
-                      <div className="pr-3">{minister.memberBirthday ? new Date(minister.memberBirthday).toLocaleDateString('pt-BR') : '-'}</div>
+                      <div className="pr-3">{formatDateOnly(minister.memberBirthday)}</div>
                     </div>
                   );
                 })}

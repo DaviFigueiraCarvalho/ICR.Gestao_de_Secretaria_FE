@@ -2,13 +2,13 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import ICRLayout from '../components/ICRLayout';
 import CRUDTable, { Column } from '../components/CRUDTable';
 import SmartSelect, { SmartSelectOption } from '../components/SmartSelect';
-import MultiSmartSelect from '../components/MultiSmartSelect';
+import MultiSelect from '../components/MultiSelect';
 import { useICRAuth } from '../contexts/ICRAuthContext';
 import { buildLocalChurchFallback, getScopeLevel, resolveScopeRestrictions } from '../lib/scope-access';
 import { useICRApi, Member, Family, Church, Cell, Federation, Minister } from '../hooks/useICRApi';
 import { settledValue } from '@/lib/utils';
 import { useViaCEP } from '../hooks/useViaCEP';
-import { handleDatePaste } from '../lib/date-utils';
+import { handleDatePaste, formatDateOnly, parseDateOnly } from '../lib/date-utils';
 import { DateInputWithPaste } from '../components/ui/DateInputWithPaste';
 import { countrySelectItems, DEFAULT_COUNTRY_CODE, formatPhoneNumber, formatPostalCode, normalizePhoneNumber, normalizePostalCode, validatePhoneNumber } from '../lib/country';
 import {
@@ -508,7 +508,7 @@ export default function Membros() {
     { key: 'genderName', label: 'Gênero', render: (item) => item.genderName || (getGenderValue(item.gender) === 1 ? 'Masculino' : 'Feminino') },
     { key: 'familyName', label: 'Família', render: (item) => item.familyName || '-' },
     { key: 'familyChurchName', label: 'Igreja', render: (item) => item.familyChurchName || '-' },
-    { key: 'birthDate', label: 'Nascimento', render: (item) => item.birthDate ? new Date(item.birthDate).toLocaleDateString('pt-BR') : '-' },
+    { key: 'birthDate', label: 'Nascimento', render: (item) => formatDateOnly(item.birthDate) },
     { key: 'cellPhone', label: 'Telefone', render: (item) => getPhoneDisplay(item.cellPhone) },
   ];
 
@@ -534,7 +534,7 @@ export default function Membros() {
             <InfoTile label="Função" value={getMemberRoleLabel(selectedMember.role, selectedMember.roleName)} />
             <InfoTile label="Gênero" value={selectedMember.genderName || (getGenderValue(selectedMember.gender) === 1 ? 'Masculino' : 'Feminino')} />
             <InfoTile label="Telefone" value={getPhoneDisplay(selectedMember.cellPhone)} />
-            <InfoTile label="Nascimento" value={selectedMember.birthDate ? new Date(selectedMember.birthDate).toLocaleDateString('pt-BR') : '-'} />
+            <InfoTile label="Nascimento" value={formatDateOnly(selectedMember.birthDate)} />
             <InfoTile label="Família" value={selectedMember.familyName || '-'} />
             <InfoTile label="Igreja" value={selectedMember.familyChurchName || '-'} />
             <InfoTile label="Célula" value={selectedMember.familyCellName || '-'} />
@@ -544,7 +544,7 @@ export default function Membros() {
           <div className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
             <InfoTile label="Já foi casado(a)" value={selectedMember.hasBeenMarried ? 'Sim' : 'Não'} compact />
             <InfoTile label="Cônjuge" value={selectedMember.spouseName || '-'} compact />
-            <InfoTile label="Data do casamento" value={selectedMember.weddingDate ? new Date(selectedMember.weddingDate).toLocaleDateString('pt-BR') : '-'} compact />
+            <InfoTile label="Data do casamento" value={formatDateOnly(selectedMember.weddingDate)} compact />
             <InfoTile label="ID" value={String(selectedMember.id)} compact />
           </div>
         </div>
@@ -652,26 +652,6 @@ export default function Membros() {
     }
   }, [isFederatedScope, isLocalScope, restrictions.lockedChurchId, restrictions.lockedFederationId]);
 
-  const federationOptions = useMemo(
-    () => {
-      const scopedFederationIds = new Set(scopedChurches.map((church) => church.federationId));
-      return federations
-        .filter((federation) => scopedFederationIds.has(federation.id))
-        .map((federation) => ({ id: federation.id, name: `${federation.id} - ${federation.name}` }));
-    },
-    [federations, scopedChurches],
-  );
-
-  const churchOptions = useMemo(
-    () => scopedChurches.map((church) => ({ id: church.id, name: `${church.id} - ${church.name}` })),
-    [scopedChurches],
-  );
-
-  const cellOptions = useMemo(
-    () => scopedCells.map((cell) => ({ id: cell.id, name: `${cell.id} - ${cell.name}` })),
-    [scopedCells],
-  );
-
   const filteredData = useMemo(() => {
     if (hasActiveFilters) {
       return data;
@@ -713,29 +693,38 @@ export default function Membros() {
   const topFilters = (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
       {!isLocalScope && !isFederatedScope && (
-        <MultiSmartSelect
+        <MultiSelect
           label="Filtro por Federações"
           selectedIds={selectedFederationIds}
           onChange={setSelectedFederationIds}
-          items={federationOptions}
           placeholder="Todas as federações"
+          fetchItems={async (page, query) => {
+            const result = await fetchApi<Federation[]>(`/api/federations?pageNumber=${page}&pageQuantity=10&name=${encodeURIComponent(query)}`);
+            return Array.isArray(result) ? result.map(f => ({ id: f.id, name: `${f.id} - ${f.name}` })) : [];
+          }}
         />
       )}
       {!isLocalScope && (
-        <MultiSmartSelect
+        <MultiSelect
           label="Filtro por Igrejas"
           selectedIds={selectedChurchIds}
           onChange={setSelectedChurchIds}
-          items={churchOptions}
           placeholder="Todas as igrejas"
+          fetchItems={async (page, query) => {
+            const result = await fetchApi<Church[]>(`/api/churches?pageNumber=${page}&pageQuantity=10&name=${encodeURIComponent(query)}`);
+            return Array.isArray(result) ? result.map(c => ({ id: c.id, name: `${c.id} - ${c.name}` })) : [];
+          }}
         />
       )}
-      <MultiSmartSelect
+      <MultiSelect
         label="Filtro por Células"
         selectedIds={selectedCellIds}
         onChange={setSelectedCellIds}
-        items={cellOptions}
         placeholder="Todas as células"
+        fetchItems={async (page, query) => {
+          const result = await fetchApi<Cell[]>(`/api/cells?pageNumber=${page}&pageQuantity=10&name=${encodeURIComponent(query)}`);
+          return Array.isArray(result) ? result.map(c => ({ id: c.id, name: `${c.id} - ${c.name}` })) : [];
+        }}
       />
     </div>
   );

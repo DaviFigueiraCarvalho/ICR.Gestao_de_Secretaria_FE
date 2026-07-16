@@ -3,92 +3,163 @@
  */
 
 /**
- * Converte uma string de data em diferentes formatos para o formato ISO (YYYY-MM-DD)
- * Aceita formatos: DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY, YYYY-MM-DD, YYYY/MM/DD
+ * Converte datas para o formato ISO (YYYY-MM-DD)
+ *
+ * Aceita:
+ * - DD/MM/YYYY
+ * - DD-MM-YYYY
+ * - DD.MM.YYYY
+ * - YYYY-MM-DD
+ * - YYYY/MM/DD
+ * - YYYY-MM-DDTHH:mm:ssZ
+ * - YYYY-MM-DDTHH:mm:ss-03:00
+ *
+ * Qualquer informação de hora ou fuso horário é ignorada.
  */
 export function parseDateString(input: string): string | null {
-  if (!input || typeof input !== 'string') return null;
+  if (!input || typeof input !== 'string') {
+    return null;
+  }
 
   const trimmed = input.trim();
 
-  // Tenta o formato ISO primeiro (YYYY-MM-DD)
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
-    const date = new Date(trimmed + 'T00:00:00');
-    if (!isNaN(date.getTime())) {
-      return trimmed;
+  // Remove qualquer parte de hora/fuso
+  const dateOnly = trimmed.split('T')[0];
+
+  // DD/MM/YYYY | DD-MM-YYYY | DD.MM.YYYY
+  const brazilianMatch = dateOnly.match(
+    /^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/
+  );
+
+  if (brazilianMatch) {
+    const day = Number(brazilianMatch[1]);
+    const month = Number(brazilianMatch[2]);
+    const year = Number(brazilianMatch[3]);
+
+    if (
+      day < 1 ||
+      day > 31 ||
+      month < 1 ||
+      month > 12
+    ) {
+      return null;
     }
+
+    return `${year.toString().padStart(4, '0')}-${month
+      .toString()
+      .padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
   }
 
-  // Tenta formatos com separadores /, -, ou .
-  // DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY
-  const patterns = [
-    /^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/, // DD/MM/YYYY
-    /^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/, // YYYY/MM/DD
-  ];
+  // YYYY-MM-DD | YYYY/MM/DD | YYYY.MM.DD
+  const isoMatch = dateOnly.match(
+    /^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/
+  );
 
-  for (const pattern of patterns) {
-    const match = trimmed.match(pattern);
-    if (match) {
-      let day: number, month: number, year: number;
+  if (isoMatch) {
+    const year = Number(isoMatch[1]);
+    const month = Number(isoMatch[2]);
+    const day = Number(isoMatch[3]);
 
-      if (match[3].length === 4) {
-        // DD/MM/YYYY
-        day = parseInt(match[1], 10);
-        month = parseInt(match[2], 10);
-        year = parseInt(match[3], 10);
-      } else {
-        // YYYY/MM/DD
-        year = parseInt(match[1], 10);
-        month = parseInt(match[2], 10);
-        day = parseInt(match[3], 10);
-      }
-
-      // Valida o mês
-      if (month < 1 || month > 12) return null;
-
-      // Valida o dia
-      if (day < 1 || day > 31) return null;
-
-      // Cria a data
-      const date = new Date(year, month - 1, day);
-
-      // Verifica se a data é válida (javascript ajusta datas inválidas)
-      if (
-        date.getFullYear() !== year ||
-        date.getMonth() !== month - 1 ||
-        date.getDate() !== day
-      ) {
-        return null;
-      }
-
-      // Retorna no formato YYYY-MM-DD
-      const yyyy = year.toString().padStart(4, '0');
-      const mm = month.toString().padStart(2, '0');
-      const dd = day.toString().padStart(2, '0');
-      return `${yyyy}-${mm}-${dd}`;
+    if (
+      day < 1 ||
+      day > 31 ||
+      month < 1 ||
+      month > 12
+    ) {
+      return null;
     }
+
+    return `${year.toString().padStart(4, '0')}-${month
+      .toString()
+      .padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
   }
 
   return null;
 }
 
 /**
- * Manipulador para evento de cola em campos de data
- * Detecta quando o usuário cola uma data e converte automaticamente
+ * Formata qualquer data para DD/MM/YYYY ignorando hora e fuso.
+ *
+ * Exemplos:
+ * 1978-07-04T00:00:00Z -> 04/07/1978
+ * 1978-07-04 -> 04/07/1978
+ * 04/07/1978 -> 04/07/1978
  */
-export function handleDatePaste(e: React.ClipboardEvent<HTMLInputElement>): void {
+export function formatDateString(input?: string | null): string {
+  if (!input) {
+    return '-';
+  }
+
+  const dateOnly = input.split('T')[0];
+
+  // ISO -> BR
+  const isoMatch = dateOnly.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+
+  if (isoMatch) {
+    return `${isoMatch[3]}/${isoMatch[2]}/${isoMatch[1]}`;
+  }
+
+  // Já está em BR
+  const brMatch = dateOnly.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+
+  if (brMatch) {
+    return dateOnly;
+  }
+
+  return '-';
+}
+
+/**
+ * Extrai apenas a parte da data (YYYY-MM-DD) de um valor ISO UTC,
+ * ignorando completamente timezone, hora, minutos, segundos e offset.
+ *
+ * Use esta função para tratar campos que representam apenas datas
+ * (como birthdays, datas de casamento, etc) ao invés de new Date().
+ *
+ * @param value - Valor ISO UTC ou null/undefined
+ * @returns Apenas a parte YYYY-MM-DD ou string vazia
+ */
+export function parseDateOnly(value?: string | null): string {
+  if (!value) return '';
+  return value.split('T')[0];
+}
+
+/**
+ * Formata uma data apenas (date-only) para exibição no formato DD/MM/YYYY.
+ * Não aplica conversão de timezone.
+ *
+ * @param value - Valor ISO UTC ou null/undefined
+ * @returns Data formatada em DD/MM/YYYY ou '-' se vazio
+ */
+export function formatDateOnly(value?: string | null): string {
+  if (!value) return '-';
+  
+  const datePart = value.split('T')[0];
+  const [year, month, day] = datePart.split('-');
+  
+  return `${day}/${month}/${year}`;
+}
+
+/**
+ * Manipulador para evento de cola em campos de data
+ */
+export function handleDatePaste(
+  e: React.ClipboardEvent<HTMLInputElement>
+): void {
   e.preventDefault();
 
   const pastedText = e.clipboardData.getData('text');
   const parsedDate = parseDateString(pastedText);
 
   if (parsedDate) {
-    // Preenche o campo com a data parseada
     const input = e.currentTarget;
+
     input.value = parsedDate;
 
-    // Dispara evento de mudança para React capturar
-    const event = new Event('change', { bubbles: true });
+    const event = new Event('change', {
+      bubbles: true,
+    });
+
     input.dispatchEvent(event);
   }
 }

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import ICRLayout from '../components/ICRLayout';
 import CRUDTable, { Column } from '../components/CRUDTable';
 import SmartSelect from '../components/SmartSelect';
-import MultiSmartSelect from '../components/MultiSmartSelect';
+import MultiSelect from '../components/MultiSelect';
 import { useICRAuth } from '../contexts/ICRAuthContext';
 import { getScopeLevel, resolveScopeRestrictions } from '../lib/scope-access';
 import { useICRApi, Cell, Church, Federation, Minister } from '../hooks/useICRApi';
@@ -281,11 +281,6 @@ const handleSave = async () => {
     { key: 'state', label: 'Estado', render: (item) => item.address?.state || '-' },
   ];
 
-  const federationOptions = useMemo(
-    () => federations.map((federation) => ({ id: federation.id, name: `${federation.id} - ${federation.name}` })),
-    [federations],
-  );
-
   const scopedChurches = useMemo(() => {
     if (scopeLevel === 'federation') return data;
     const allowedChurchIds = new Set(restrictions.allowedChurchIds);
@@ -332,12 +327,15 @@ const handleSave = async () => {
 
   const topFilters = !isFederatedScope ? (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-      <MultiSmartSelect
+      <MultiSelect
         label="Filtro por Áreas"
         selectedIds={selectedFederationIds}
         onChange={setSelectedFederationIds}
-        items={federationOptions}
         placeholder="Todas as áreas"
+        fetchItems={async (page, query) => {
+          const result = await fetchApi<Federation[]>(`/api/federations?pageNumber=${page}&pageQuantity=10&name=${encodeURIComponent(query)}`);
+          return Array.isArray(result) ? result.map(f => ({ id: f.id, name: `${f.id} - ${f.name}` })) : [];
+        }}
       />
     </div>
   ) : null;

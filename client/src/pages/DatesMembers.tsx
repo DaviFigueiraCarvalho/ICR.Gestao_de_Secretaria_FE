@@ -5,6 +5,7 @@ import { useICRAuth } from '../contexts/ICRAuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { buildLocalChurchFallback, getScopeLevel } from '../lib/scope-access';
 import { isPermissionError } from '@/lib/utils';
+import { formatDateOnly, parseDateOnly } from '../lib/date-utils';
 import PermissionDeniedError from '../components/PermissionDeniedError';
 
 interface MemberBirthday {
@@ -56,9 +57,14 @@ const TABS: { id: TabType; label: string }[] = [
 const getDayOfMonth = (rawDate?: string): number => {
   if (!rawDate) return Number.MAX_SAFE_INTEGER;
 
-  const parsed = new Date(rawDate);
-  if (!Number.isNaN(parsed.getTime())) {
-    return parsed.getDate();
+  // Use date-only parsing to avoid timezone issues
+  const datePart = parseDateOnly(rawDate);
+  if (datePart) {
+    const parts = datePart.split('-');
+    if (parts.length === 3) {
+      const day = Number(parts[2]);
+      return Number.isFinite(day) && day >= 1 && day <= 31 ? day : Number.MAX_SAFE_INTEGER;
+    }
   }
 
   // Fallback for non-ISO strings like dd/MM/yyyy or yyyy-MM-dd variants.
@@ -77,23 +83,33 @@ const getDayOfMonth = (rawDate?: string): number => {
 const formatDateLabel = (rawDate?: string): string => {
   if (!rawDate) return '—';
 
-  const parsed = new Date(rawDate);
-  if (Number.isNaN(parsed.getTime())) {
-    return '—';
+  // Use date-only formatting to avoid timezone issues
+  const formatted = formatDateOnly(rawDate);
+  if (formatted !== '-') {
+    // Convert from DD/MM/YYYY to "D MMM" format
+    const parts = formatted.split('/');
+    if (parts.length === 3) {
+      const months = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+      const day = Number(parts[0]);
+      const month = Number(parts[1]) - 1;
+      return `${day} ${months[month]}`;
+    }
   }
 
-  return parsed.toLocaleDateString('pt-BR', {
-    day: 'numeric',
-    month: 'short',
-  });
+  return '—';
 };
 
 const getDayString = (rawDate?: string): string => {
   if (!rawDate) return '—';
 
-  const parsed = new Date(rawDate);
-  if (!Number.isNaN(parsed.getTime())) {
-    return parsed.getDate().toString().padStart(2, '0');
+  // Use date-only parsing to avoid timezone issues
+  const datePart = parseDateOnly(rawDate);
+  if (datePart) {
+    const parts = datePart.split('-');
+    if (parts.length === 3) {
+      const day = Number(parts[2]);
+      return Number.isFinite(day) && day >= 1 && day <= 31 ? day.toString().padStart(2, '0') : '—';
+    }
   }
 
   // Fallback

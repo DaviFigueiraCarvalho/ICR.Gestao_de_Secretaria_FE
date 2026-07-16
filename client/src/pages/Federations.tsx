@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import ICRLayout from '../components/ICRLayout';
 import CRUDTable, { Column } from '../components/CRUDTable';
 import SmartSelect from '../components/SmartSelect';
-import { useICRApi, Federation, Member } from '../hooks/useICRApi';
+import { useICRApi, Federation, Minister } from '../hooks/useICRApi';
 import { settledValue } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -20,15 +20,15 @@ export default function Federacoes() {
   const [editItem, setEditItem] = useState<Federation | null>(null);
   const [form, setForm] = useState<FederacaoForm>({ name: '', ministerId: '' });
   const [saving, setSaving] = useState(false);
-  const [members, setMembers] = useState<Member[]>([]);
+  const [ministers, setMinisters] = useState<Minister[]>([]);
 
   const load = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const [federationsResult, membersResult] = await Promise.allSettled([
+      const [federationsResult, ministersResult] = await Promise.allSettled([
         fetchApi<Federation[]>('/api/federations'),
-        fetchApi<Member[]>('/api/members'),
+        fetchApi<Minister[]>('/api/ministers?pageNumber=1&pageQuantity=200'),
       ]);
 
       if (federationsResult.status === 'rejected') {
@@ -36,7 +36,7 @@ export default function Federacoes() {
       }
 
       setData(settledValue(federationsResult) ?? []);
-      setMembers(settledValue(membersResult) ?? []);
+      setMinisters(settledValue(ministersResult) ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao carregar Areas');
     } finally {
@@ -146,7 +146,7 @@ export default function Federacoes() {
                            <SmartSelect
                                label="Ministro"
                                selectedId={form.ministerId}
-                               selectedItem={members.find(m => m.id === form.ministerId) ? { id: members.find(m => m.id === form.ministerId)!.id, name: members.find(m => m.id === form.ministerId)!.name } : null}
+                                selectedItem={ministers.find(m => m.id === form.ministerId) ? { id: ministers.find(m => m.id === form.ministerId)!.id, name: ministers.find(m => m.id === form.ministerId)!.memberName || ministers.find(m => m.id === form.ministerId)!.id.toString() } : null}
                                onSelect={(id) =>
                                    setForm({
                                        ...form,
@@ -159,8 +159,8 @@ export default function Federacoes() {
                                    params.append('pageNumber', String(page));
                                    params.append('pageQuantity', '10');
                                    if (query) params.append('query', query);
-                                   const result = await fetchApi<Member[]>(`/api/members?${params}`);
-                                   return Array.isArray(result) ? result.map(m => ({ id: m.id, name: m.name })) : [];
+                                    const result = await fetchApi<Minister[]>(`/api/ministers?${params}`);
+                                    return Array.isArray(result) ? result.map(m => ({ id: m.id, name: m.memberName || m.id.toString() })) : [];
                                }}
                            />
             </div>

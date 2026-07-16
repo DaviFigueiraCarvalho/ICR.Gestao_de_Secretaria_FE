@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import ICRLayout from '../components/ICRLayout';
 import { useICRApi } from '../hooks/useICRApi';
 import { isPermissionError } from '@/lib/utils';
+import { formatDateOnly, parseDateOnly } from '../lib/date-utils';
 import PermissionDeniedError from '../components/PermissionDeniedError';
 
 interface MinisterBirthday {
@@ -191,7 +192,7 @@ export default function DatasPastores() {
                 </div>
                 <div className="text-right">
                   <p className="text-[#017158] font-['Nunito'] font-medium">
-                    {item.birthday || item.weddingDate || item.date || '—'}
+                    {formatDateOnly(item.birthday || item.weddingDate || item.date)}
                   </p>
                 </div>
               </div>

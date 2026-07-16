@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import ICRLayout from '../components/ICRLayout';
 import CRUDTable, { Column } from '../components/CRUDTable';
 import SmartSelect from '../components/SmartSelect';
-import MultiSmartSelect from '../components/MultiSmartSelect';
+import MultiSelect from '../components/MultiSelect';
 import { useICRAuth } from '../contexts/ICRAuthContext';
 import { buildLocalChurchFallback, getScopeLevel, resolveScopeRestrictions } from '../lib/scope-access';
 import { useICRApi, Cell, Church, Family, Federation, Member, Minister } from '../hooks/useICRApi';
@@ -268,18 +268,6 @@ export default function Celulas() {
     }
   }, [isFederatedScope, isLocalScope, restrictions.lockedChurchId, restrictions.lockedFederationId]);
 
-  const churchOptions = useMemo(
-    () => scopedChurches.map((church) => ({ id: church.id, name: `${church.id} - ${church.name}` })),
-    [scopedChurches],
-  );
-
-  const federationOptions = useMemo(
-    () => federations
-      .filter((federation) => scopedFederationIds.has(federation.id))
-      .map((federation) => ({ id: federation.id, name: `${federation.id} - ${federation.name}` })),
-    [federations, scopedFederationIds],
-  );
-
   const filteredData = useMemo(() => {
     const allowedChurchIds = new Set(scopedChurches.map((church) => church.id));
 
@@ -310,31 +298,40 @@ export default function Celulas() {
     <>
       {!isLocalScope && !isFederatedScope && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <MultiSmartSelect
+          <MultiSelect
             label="Filtro por Áreas"
             selectedIds={selectedFederationIds}
             onChange={setSelectedFederationIds}
-            items={federationOptions}
             placeholder="Todas as áreas"
+            fetchItems={async (page, query) => {
+              const result = await fetchApi<Federation[]>(`/api/federations?pageNumber=${page}&pageQuantity=10&name=${encodeURIComponent(query)}`);
+              return Array.isArray(result) ? result.map(f => ({ id: f.id, name: `${f.id} - ${f.name}` })) : [];
+            }}
           />
-          <MultiSmartSelect
+          <MultiSelect
             label="Filtro por Igrejas"
             selectedIds={selectedChurchIds}
             onChange={setSelectedChurchIds}
-            items={churchOptions}
             placeholder="Todas as igrejas"
+            fetchItems={async (page, query) => {
+              const result = await fetchApi<Church[]>(`/api/churches?pageNumber=${page}&pageQuantity=10&name=${encodeURIComponent(query)}`);
+              return Array.isArray(result) ? result.map(c => ({ id: c.id, name: `${c.id} - ${c.name}` })) : [];
+            }}
           />
         </div>
       )}
 
       {isFederatedScope && (
         <div className="grid grid-cols-1 md:grid-cols-1 gap-3">
-          <MultiSmartSelect
+          <MultiSelect
             label="Filtro por Igrejas"
             selectedIds={selectedChurchIds}
             onChange={setSelectedChurchIds}
-            items={churchOptions}
             placeholder="Igrejas da sua comissão"
+            fetchItems={async (page, query) => {
+              const result = await fetchApi<Church[]>(`/api/churches?pageNumber=${page}&pageQuantity=10&name=${encodeURIComponent(query)}`);
+              return Array.isArray(result) ? result.map(c => ({ id: c.id, name: `${c.id} - ${c.name}` })) : [];
+            }}
           />
         </div>
       )}

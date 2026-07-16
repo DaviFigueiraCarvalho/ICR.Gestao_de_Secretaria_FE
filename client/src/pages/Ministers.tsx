@@ -12,6 +12,7 @@ import { toast } from 'sonner';
 import { getMinisterCoverageBadgeClass, getMinisterCoverageLabel, resolveMinisterCoverageStatus, summarizeMinisterCoverage } from '../lib/minister-coverage';
 import { useMemo } from 'react';
 import { useSharedMinisterData } from '../hooks/useSharedMinisterData';
+import { formatDateOnly } from '../lib/date-utils';
 
 interface MinistroForm {
   memberId: number | '';
@@ -269,8 +270,8 @@ export default function Ministros() {
     { key: 'memberName', label: 'Nome', render: (item) => item.memberName || '-' },
     { key: 'phone', label: 'Telefone', render: (item) => getPhoneDisplay(item.memberPhone || item.member?.cellPhone) },
     { key: 'email', label: 'E-mail', render: (item) => item.email || '-' },
-    { key: 'memberBirthday', label: 'Nascimento', render: (item) => item.memberBirthday ? new Date(item.memberBirthday).toLocaleDateString('pt-BR') : '-' },
-    { key: 'memberWeddingDate', label: 'Casamento', render: (item) => item.memberWeddingDate ? new Date(item.memberWeddingDate).toLocaleDateString('pt-BR') : '-' },
+    { key: 'memberBirthday', label: 'Nascimento', render: (item) => formatDateOnly(item.memberBirthday) },
+    { key: 'memberWeddingDate', label: 'Casamento', render: (item) => formatDateOnly(item.memberWeddingDate) },
     {
       key: 'coverage',
       label: 'Cobertura',
@@ -347,18 +348,18 @@ export default function Ministros() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <InfoTile label="Telefone" value={getPhoneDisplay(selectedMinister.memberPhone || selectedMinister.member?.cellPhone)} />
                 <InfoTile label="E-mail" value={selectedMinister.email || '-'} />
-                <InfoTile label="Nascimento" value={selectedMinister.memberBirthday ? new Date(selectedMinister.memberBirthday).toLocaleDateString('pt-BR') : '-'} />
-                <InfoTile label="Casamento" value={selectedMinister.memberWeddingDate ? new Date(selectedMinister.memberWeddingDate).toLocaleDateString('pt-BR') : '-'} />
+                <InfoTile label="Nascimento" value={formatDateOnly(selectedMinister.memberBirthday)} />
+                <InfoTile label="Casamento" value={formatDateOnly(selectedMinister.memberWeddingDate)} />
                 <InfoTile label="CPF" value={selectedMinister.cpf || '-'} />
-                <InfoTile label="Validade da carteira" value={selectedMinister.cardValidity ? new Date(selectedMinister.cardValidity).toLocaleDateString('pt-BR') : '-'} />
+                <InfoTile label="Validade da carteira" value={formatDateOnly(selectedMinister.cardValidity)} />
               </div>
             </div>
 
             <div className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4">
               <InfoTile label="Igreja" value={selectedMinister.churchMemberName || '-'} compact />
               <InfoTile label="Federação" value={selectedMinister.federationMemberName || '-'} compact />
-              <InfoTile label="Ordenação Presbítero" value={selectedMinister.presbiterOrdinationDate ? new Date(selectedMinister.presbiterOrdinationDate).toLocaleDateString('pt-BR') : '-'} compact />
-              <InfoTile label="Ordenação a Pastor" value={selectedMinister.ministerOrdinationDate ? new Date(selectedMinister.ministerOrdinationDate).toLocaleDateString('pt-BR') : '-'} compact />
+              <InfoTile label="Ordenação Presbítero" value={formatDateOnly(selectedMinister.presbiterOrdinationDate)} compact />
+              <InfoTile label="Ordenação a Pastor" value={formatDateOnly(selectedMinister.ministerOrdinationDate)} compact />
               <InfoTile label="Endereço" value={selectedMinister.address ? [selectedMinister.address.street, selectedMinister.address.number, selectedMinister.address.complement, selectedMinister.address.city, selectedMinister.address.state, selectedMinister.address.countyOrRegion].filter(Boolean).join(', ') : '-'} compact />
               <InfoTile label="Código postal" value={selectedMinister.address?.postalCode || '-'} compact />
             </div>
