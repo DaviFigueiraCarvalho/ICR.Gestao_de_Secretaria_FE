@@ -6,6 +6,7 @@ import { canAccessPathByScope, getScopeLevel } from '../lib/scope-access';
 import { toast } from 'sonner';
 import icrLogo from '../assets/icr-logo.svg';
 import SupportButton from './SupportButton';
+import SessionTimer from './SessionTimer';
 
 const ICR_LOGO = icrLogo;
 
@@ -326,6 +327,7 @@ export default function ICRLayout({ children, title }: ICRLayoutProps) {
             <h1 className="text-white text-2xl font-['Nunito'] font-semibold">{title}</h1>
           </div>
         )}
+        <SessionTimer />
         <div className="p-2 sm:p-4 lg:p-6 w-full">{children}</div>
       </main>
 
