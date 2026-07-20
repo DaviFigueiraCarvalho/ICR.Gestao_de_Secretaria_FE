@@ -149,9 +149,11 @@ export default function SmartSelect({
 
   return (
     <div className={`relative ${className}`}>
-      <label className="text-white/70 text-sm font-['Nunito'] block mb-1">
-        {label} {required && '*'}
-      </label>
+      {label && (
+        <label className="text-white/70 text-sm font-['Nunito'] block mb-1">
+          {label} {required && '*'}
+        </label>
+      )}
       <Popover open={open} onOpenChange={handleOpenChange}>
         <PopoverTrigger asChild>
           <button

@@ -120,7 +120,7 @@ export default function MultiSelect({
 
       {/* SmartSelect para adicionar novos itens */}
       <SmartSelect
-        label={selectedIds.length > 0 ? '' : label}
+        label=""
         selectedId={''}
         selectedItem={null}
         onSelect={handleSelect}

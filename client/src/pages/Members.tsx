@@ -8,6 +8,7 @@ import { buildLocalChurchFallback, getScopeLevel, resolveScopeRestrictions } fro
 import { useICRApi, Member, Family, Church, Cell, Federation, Minister } from '../hooks/useICRApi';
 import { settledValue } from '@/lib/utils';
 import { buildMemberListEndpoint } from '../lib/member-list-query';
+import { buildPaginatedListEndpoint } from '../lib/paginated-list-query';
 import { useViaCEP } from '../hooks/useViaCEP';
 import { handleDatePaste, formatDateOnly, parseDateOnly } from '../lib/date-utils';
 import { DateInputWithPaste } from '../components/ui/DateInputWithPaste';
@@ -590,17 +591,48 @@ export default function Membros() {
 
   const handleFederationFilterChange = (ids: number[]) => {
     setSelectedFederationId(getLastSelectedId(ids));
+    setSelectedChurchId(undefined);
+    setSelectedCellId(undefined);
     setPage(1);
   };
 
   const handleChurchFilterChange = (ids: number[]) => {
     setSelectedChurchId(getLastSelectedId(ids));
+    setSelectedCellId(undefined);
     setPage(1);
   };
 
   const handleCellFilterChange = (ids: number[]) => {
     setSelectedCellId(getLastSelectedId(ids));
     setPage(1);
+  };
+
+  const fetchChurchFilterItems = async (filterPage: number, query: string) => {
+    const path = typeof selectedFederationId === 'number'
+      ? `/api/churches/federation/${selectedFederationId}`
+      : '/api/churches';
+    const endpoint = buildPaginatedListEndpoint(path, {
+      pageNumber: filterPage,
+      pageQuantity: 10,
+      querySearch: query,
+    });
+    const result = await fetchApi<Church[]>(endpoint);
+    return Array.isArray(result) ? result.map((church) => ({ id: church.id, name: `${church.id} - ${church.name}` })) : [];
+  };
+
+  const fetchCellFilterItems = async (filterPage: number, query: string) => {
+    const hasLocationFilter = typeof selectedFederationId === 'number' || typeof selectedChurchId === 'number';
+    const endpoint = buildPaginatedListEndpoint(hasLocationFilter ? '/api/cells/filter' : '/api/cells', {
+      pageNumber: filterPage,
+      pageQuantity: 10,
+      querySearch: query,
+      filters: {
+        federationId: selectedFederationId,
+        churchId: selectedChurchId,
+      },
+    });
+    const result = await fetchApi<Cell[]>(endpoint);
+    return Array.isArray(result) ? result.map((cell) => ({ id: cell.id, name: `${cell.id} - ${cell.name}` })) : [];
   };
 
   const topFilters = (
@@ -625,10 +657,7 @@ export default function Membros() {
           onChange={handleChurchFilterChange}
           maxSelections={1}
           placeholder="Todas as igrejas"
-          fetchItems={async (page, query) => {
-            const result = await fetchApi<Church[]>(`/api/churches?pageNumber=${page}&pageQuantity=10&querySearch=${encodeURIComponent(query.trim())}`);
-            return Array.isArray(result) ? result.map(c => ({ id: c.id, name: `${c.id} - ${c.name}` })) : [];
-          }}
+          fetchItems={fetchChurchFilterItems}
         />
       )}
       <MultiSelect
@@ -637,10 +666,7 @@ export default function Membros() {
         onChange={handleCellFilterChange}
         maxSelections={1}
         placeholder="Todas as células"
-        fetchItems={async (page, query) => {
-          const result = await fetchApi<Cell[]>(`/api/cells?pageNumber=${page}&pageQuantity=10&querySearch=${encodeURIComponent(query.trim())}`);
-          return Array.isArray(result) ? result.map(c => ({ id: c.id, name: `${c.id} - ${c.name}` })) : [];
-        }}
+        fetchItems={fetchCellFilterItems}
       />
     </div>
   );

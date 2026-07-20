@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ICRLayout from '../components/ICRLayout';
 import CRUDTable, { Column } from '../components/CRUDTable';
 import SmartSelect from '../components/SmartSelect';
@@ -7,6 +7,7 @@ import { useICRAuth } from '../contexts/ICRAuthContext';
 import { buildLocalChurchFallback, getScopeLevel, resolveScopeRestrictions } from '../lib/scope-access';
 import { useICRApi, Cell, Church, Family, Federation, Member, Minister } from '../hooks/useICRApi';
 import { settledValue } from '@/lib/utils';
+import { buildPaginatedListEndpoint } from '../lib/paginated-list-query';
 import { toast } from 'sonner';
 
 interface CelulaForm {
@@ -42,13 +43,6 @@ const getCellTypeLabel = (value: unknown, typeName?: string): string => {
   return CELL_TYPE_OPTIONS.find((option) => option.value === numericType)?.label ?? `Tipo ${numericType}`;
 };
 
-const normalizeCellName = (value: string) =>
-  value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .trim()
-    .toLowerCase();
-
 const getFriendlyCellSaveError = (message: string): string => {
   const normalized = message.toLowerCase();
 
@@ -66,6 +60,9 @@ const getFriendlyCellSaveError = (message: string): string => {
 export default function Celulas() {
   const { fetchApi } = useICRApi();
   const { user } = useICRAuth();
+  const scopeLevel = getScopeLevel(user?.scope, user?.username);
+  const isLocalScope = scopeLevel === 'local';
+  const isFederatedScope = scopeLevel === 'federated';
   const [data, setData] = useState<Cell[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -78,17 +75,81 @@ export default function Celulas() {
   const [federations, setFederations] = useState<Federation[]>([]);
   const [ministers, setMinisters] = useState<Minister[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
+  const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
-  const [selectedFederationIds, setSelectedFederationIds] = useState<number[]>([]);
-  const [selectedChurchIds, setSelectedChurchIds] = useState<number[]>([]);
-  const scopeLevel = getScopeLevel(user?.scope, user?.username);
-  const isLocalScope = scopeLevel === 'local';
-  const isFederatedScope = scopeLevel === 'federated';
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [selectedFederationId, setSelectedFederationId] = useState<number | undefined>(() =>
+    isFederatedScope && typeof user?.federationId === 'number' ? user.federationId : undefined,
+  );
+  const [selectedChurchId, setSelectedChurchId] = useState<number | undefined>(() =>
+    isLocalScope && typeof user?.churchId === 'number' ? user.churchId : undefined,
+  );
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  const latestCellsRequestRef = useRef(0);
 
-  const load = async () => {
+  const cellsEndpoint = useMemo(() => {
+    const hasFilter = typeof selectedFederationId === 'number' || typeof selectedChurchId === 'number';
+    return buildPaginatedListEndpoint(
+      hasFilter ? '/api/cells/filter' : '/api/cells',
+      {
+        pageNumber: page,
+        pageQuantity: pageSize,
+        querySearch: debouncedSearchTerm,
+        filters: hasFilter
+          ? { federationId: selectedFederationId, churchId: selectedChurchId }
+          : undefined,
+      },
+    );
+  }, [debouncedSearchTerm, page, pageSize, selectedChurchId, selectedFederationId]);
+
+  const loadCells = useCallback(async () => {
+    const requestId = ++latestCellsRequestRef.current;
     setIsLoading(true);
     setError(null);
+
     try {
+      const result = await fetchApi<Cell[]>(cellsEndpoint);
+      if (requestId !== latestCellsRequestRef.current) return;
+
+      const cellsData = Array.isArray(result) ? result : [];
+      if (page > 1 && cellsData.length === 0) {
+        setPage((currentPage) => Math.max(1, currentPage - 1));
+        return;
+      }
+
+      setData(cellsData);
+      setHasNextPage(cellsData.length === pageSize);
+    } catch (err) {
+      if (requestId === latestCellsRequestRef.current) {
+        setError(err instanceof Error ? err.message : 'Erro ao carregar células');
+      }
+    } finally {
+      if (requestId === latestCellsRequestRef.current) {
+        setIsLoading(false);
+      }
+    }
+  }, [cellsEndpoint, fetchApi, page, pageSize]);
+
+  useEffect(() => {
+    void loadCells();
+
+    return () => {
+      latestCellsRequestRef.current += 1;
+    };
+  }, [loadCells]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setPage(1);
+      setDebouncedSearchTerm(searchTerm.trim());
+    }, 500);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    const loadReferenceData = async () => {
       const churchesRequest = isLocalScope && typeof user?.churchId === 'number'
         ? fetchApi<Church>(`/api/churches/${user.churchId}`)
             .then((church) => [church])
@@ -103,33 +164,23 @@ export default function Celulas() {
         ? Promise.resolve<Minister[]>([])
         : fetchApi<Minister[]>('/api/ministers?pageNumber=1&pageQuantity=200');
 
-      const [cellsResult, churchesResult, familiesResult, federationsResult, ministersResult, membersResult] = await Promise.allSettled([
-        fetchApi<Cell[]>('/api/cells'),
+      const [churchesResult, familiesResult, federationsResult, ministersResult, membersResult] = await Promise.allSettled([
         churchesRequest,
         fetchApi<Family[]>('/api/families?pageNumber=1&pageQuantity=200'),
         federationsRequest,
         ministersRequest,
-        fetchApi<Member[]>('/api/members'),
+        fetchApi<Member[]>('/api/members?pageNumber=1&pageQuantity=200'),
       ]);
 
-      if (cellsResult.status === 'rejected') {
-        throw cellsResult.reason;
-      }
-
-      setData(Array.isArray(cellsResult.value) ? cellsResult.value : []);
       setChurches(settledValue(churchesResult) ?? []);
       setFamilies(Array.isArray(settledValue(familiesResult)) ? settledValue(familiesResult) ?? [] : []);
       setFederations(settledValue(federationsResult) ?? []);
       setMinisters(Array.isArray(settledValue(ministersResult)) ? settledValue(ministersResult) ?? [] : []);
       setMembers(settledValue(membersResult) ?? []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao carregar células');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    };
 
-  useEffect(() => { load(); }, []);
+    void loadReferenceData();
+  }, [fetchApi, isLocalScope, user?.churchId]);
 
   const openAdd = () => {
     setEditItem(null);
@@ -159,17 +210,6 @@ export default function Celulas() {
     if (!trimmedName) { toast.error('Nome é obrigatório'); return; }
     if (!form.churchId) { toast.error('Igreja é obrigatória'); return; }
 
-    const hasDuplicateName = data.some((cell) => {
-      if (editItem && cell.id === editItem.id) return false;
-
-      return normalizeCellName(cell.name || '') === normalizeCellName(trimmedName);
-    });
-
-    if (hasDuplicateName) {
-      toast.error('Ja existe uma celula com esse nome. Escolha outro nome.');
-      return;
-    }
-
     setSaving(true);
     try {
       const body = {
@@ -186,7 +226,7 @@ export default function Celulas() {
         toast.success('Célula criada com sucesso');
       }
       setShowModal(false);
-      load();
+      void loadCells();
     } catch (err) {
       if (err instanceof Error) {
         toast.error(getFriendlyCellSaveError(err.message));
@@ -200,7 +240,7 @@ export default function Celulas() {
 
   const handleDelete = async (item: Cell) => {
     await fetchApi(`/api/cells/${item.id}`, { method: 'DELETE' });
-    load();
+    await loadCells();
   };
 
   const columns: Column<Cell>[] = [
@@ -260,38 +300,48 @@ export default function Celulas() {
 
   useEffect(() => {
     if (isFederatedScope && typeof restrictions.lockedFederationId === 'number') {
-      setSelectedFederationIds([restrictions.lockedFederationId]);
+      setSelectedFederationId(restrictions.lockedFederationId);
+      setPage(1);
     }
 
     if (isLocalScope && typeof restrictions.lockedChurchId === 'number') {
-      setSelectedChurchIds([restrictions.lockedChurchId]);
+      setSelectedChurchId(restrictions.lockedChurchId);
+      setPage(1);
     }
   }, [isFederatedScope, isLocalScope, restrictions.lockedChurchId, restrictions.lockedFederationId]);
-
-  const filteredData = useMemo(() => {
-    const allowedChurchIds = new Set(scopedChurches.map((church) => church.id));
-
-    return data.filter((cell) => {
-      if (!allowedChurchIds.has(cell.churchId)) return false;
-
-      const church = churches.find((churchItem) => churchItem.id === cell.churchId);
-      const federationId = church?.federationId;
-
-      const federationMatch =
-        selectedFederationIds.length === 0 ||
-        (typeof federationId === 'number' && selectedFederationIds.includes(federationId));
-
-      const churchMatch =
-        selectedChurchIds.length === 0 ||
-        (typeof cell.churchId === 'number' && selectedChurchIds.includes(cell.churchId));
-
-      return federationMatch && churchMatch;
-    });
-  }, [churches, data, scopedChurches, selectedChurchIds, selectedFederationIds]);
 
   const handlePageSizeChange = (size: number) => {
     const safeSize = Math.min(100, Math.max(1, size));
     setPageSize(safeSize);
+    setPage(1);
+  };
+
+  const handleSearch = (value: string) => {
+    setSearchTerm(value);
+  };
+
+  const handleFederationFilterChange = (ids: number[]) => {
+    setSelectedFederationId(ids[ids.length - 1]);
+    setSelectedChurchId(undefined);
+    setPage(1);
+  };
+
+  const handleChurchFilterChange = (ids: number[]) => {
+    setSelectedChurchId(ids[ids.length - 1]);
+    setPage(1);
+  };
+
+  const fetchChurchFilterItems = async (filterPage: number, query: string) => {
+    const path = typeof selectedFederationId === 'number'
+      ? `/api/churches/federation/${selectedFederationId}`
+      : '/api/churches';
+    const endpoint = buildPaginatedListEndpoint(path, {
+      pageNumber: filterPage,
+      pageQuantity: 10,
+      querySearch: query,
+    });
+    const result = await fetchApi<Church[]>(endpoint);
+    return Array.isArray(result) ? result.map(c => ({ id: c.id, name: `${c.id} - ${c.name}` })) : [];
   };
 
   const topFilters = (
@@ -299,24 +349,23 @@ export default function Celulas() {
       {!isLocalScope && !isFederatedScope && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <MultiSelect
-            label="Filtro por Áreas"
-            selectedIds={selectedFederationIds}
-            onChange={setSelectedFederationIds}
+            label="Filtro por Federação"
+            selectedIds={typeof selectedFederationId === 'number' ? [selectedFederationId] : []}
+            onChange={handleFederationFilterChange}
+            maxSelections={1}
             placeholder="Todas as áreas"
             fetchItems={async (page, query) => {
-              const result = await fetchApi<Federation[]>(`/api/federations?pageNumber=${page}&pageQuantity=10&name=${encodeURIComponent(query)}`);
+              const result = await fetchApi<Federation[]>(`/api/federations?pageNumber=${page}&pageQuantity=10&search=${encodeURIComponent(query.trim())}`);
               return Array.isArray(result) ? result.map(f => ({ id: f.id, name: `${f.id} - ${f.name}` })) : [];
             }}
           />
           <MultiSelect
-            label="Filtro por Igrejas"
-            selectedIds={selectedChurchIds}
-            onChange={setSelectedChurchIds}
+            label="Filtro por Igreja"
+            selectedIds={typeof selectedChurchId === 'number' ? [selectedChurchId] : []}
+            onChange={handleChurchFilterChange}
+            maxSelections={1}
             placeholder="Todas as igrejas"
-            fetchItems={async (page, query) => {
-              const result = await fetchApi<Church[]>(`/api/churches?pageNumber=${page}&pageQuantity=10&name=${encodeURIComponent(query)}`);
-              return Array.isArray(result) ? result.map(c => ({ id: c.id, name: `${c.id} - ${c.name}` })) : [];
-            }}
+            fetchItems={fetchChurchFilterItems}
           />
         </div>
       )}
@@ -324,14 +373,12 @@ export default function Celulas() {
       {isFederatedScope && (
         <div className="grid grid-cols-1 md:grid-cols-1 gap-3">
           <MultiSelect
-            label="Filtro por Igrejas"
-            selectedIds={selectedChurchIds}
-            onChange={setSelectedChurchIds}
+            label="Filtro por Igreja"
+            selectedIds={typeof selectedChurchId === 'number' ? [selectedChurchId] : []}
+            onChange={handleChurchFilterChange}
+            maxSelections={1}
             placeholder="Igrejas da sua comissão"
-            fetchItems={async (page, query) => {
-              const result = await fetchApi<Church[]>(`/api/churches?pageNumber=${page}&pageQuantity=10&name=${encodeURIComponent(query)}`);
-              return Array.isArray(result) ? result.map(c => ({ id: c.id, name: `${c.id} - ${c.name}` })) : [];
-            }}
+            fetchItems={fetchChurchFilterItems}
           />
         </div>
       )}
@@ -343,19 +390,24 @@ export default function Celulas() {
       <CRUDTable
         title="Células"
         topContent={topFilters}
-        data={filteredData}
-        pagination
-        pageSize={pageSize}
-        onPageSizeChange={handlePageSizeChange}
-        pageSizeOptions={[10, 25, 50, 100]}
+        data={data}
+        serverPagination={{
+          currentPage: page,
+          pageSize,
+          hasNextPage,
+          onPageChange: setPage,
+          onPageSizeChange: handlePageSizeChange,
+          pageSizeOptions: [10, 25, 50, 100],
+        }}
         columns={columns}
         isLoading={isLoading}
         error={error}
         onAdd={openAdd}
         onEdit={openEdit}
         onDelete={handleDelete}
-        onRefresh={load}
+        onRefresh={loadCells}
         searchPlaceholder="Buscar célula..."
+        onSearch={handleSearch}
         emptyMessage="Nenhuma célula encontrada"
         addLabel="Nova Célula"
       />

@@ -125,6 +125,31 @@
               "type": "integer",
               "format": "int64"
             }
+          },
+          {
+            "name": "pageNumber",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            }
+          },
+          {
+            "name": "pageQuantity",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 50
+            }
+          },
+          {
+            "name": "querySearch",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -492,6 +517,31 @@
               "type": "integer",
               "format": "int64"
             }
+          },
+          {
+            "name": "pageNumber",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            }
+          },
+          {
+            "name": "pageQuantity",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 50
+            }
+          },
+          {
+            "name": "querySearch",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -853,7 +903,7 @@
         }
       }
     },
-    "/api/families/church/{churchId}": {
+    "/api/families/filter": {
       "get": {
         "tags": [
           "Family"
@@ -861,34 +911,43 @@
         "parameters": [
           {
             "name": "churchId",
-            "in": "path",
-            "required": true,
+            "in": "query",
             "schema": {
               "type": "integer",
               "format": "int64"
             }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/families/cell/{cellId}": {
-      "get": {
-        "tags": [
-          "Family"
-        ],
-        "parameters": [
+          },
           {
             "name": "cellId",
-            "in": "path",
-            "required": true,
+            "in": "query",
             "schema": {
               "type": "integer",
               "format": "int64"
+            }
+          },
+          {
+            "name": "pageNumber",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            }
+          },
+          {
+            "name": "pageQuantity",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 50
+            }
+          },
+          {
+            "name": "querySearch",
+            "in": "query",
+            "schema": {
+              "type": "string"
             }
           }
         ],
@@ -2828,6 +2887,87 @@
         }
       }
     },
+    "/api/user-roles/filter": {
+      "get": {
+        "tags": [
+          "UserRole"
+        ],
+        "parameters": [
+          {
+            "name": "churchId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "cellId",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "pageNumber",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 1
+            }
+          },
+          {
+            "name": "pageQuantity",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "default": 50
+            }
+          },
+          {
+            "name": "querySearch",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UserResponseDTO"
+                  }
+                }
+              },
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UserResponseDTO"
+                  }
+                }
+              },
+              "text/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/UserResponseDTO"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/user-roles/roles": {
       "post": {
         "tags": [
@@ -3694,7 +3834,7 @@
           },
           "weddingDate": {
             "type": "string",
-            "format": "date-time",
+            "format": "date",
             "nullable": true
           }
         },
@@ -3727,7 +3867,7 @@
           },
           "weddingDate": {
             "type": "string",
-            "format": "date-time",
+            "format": "date",
             "nullable": true
           }
         },
@@ -3762,7 +3902,7 @@
           },
           "weddingDate": {
             "type": "string",
-            "format": "date-time",
+            "format": "date",
             "nullable": true
           }
         },
@@ -3884,7 +4024,7 @@
           },
           "birthDate": {
             "type": "string",
-            "format": "date-time"
+            "format": "date"
           },
           "cellPhone": {
             "$ref": "#/components/schemas/Phone"
@@ -3929,7 +4069,7 @@
           },
           "birthDate": {
             "type": "string",
-            "format": "date-time"
+            "format": "date"
           },
           "hasBeenMarried": {
             "type": "boolean"
@@ -3960,7 +4100,7 @@
           },
           "birthDate": {
             "type": "string",
-            "format": "date-time",
+            "format": "date",
             "nullable": true
           },
           "hasBeenMarried": {
@@ -4016,7 +4156,7 @@
           },
           "birthDate": {
             "type": "string",
-            "format": "date-time"
+            "format": "date"
           },
           "hasBeenMarried": {
             "type": "boolean"
@@ -4027,7 +4167,7 @@
           },
           "weddingDate": {
             "type": "string",
-            "format": "date-time",
+            "format": "date",
             "nullable": true
           },
           "gender": {
@@ -4113,15 +4253,15 @@
           },
           "cardValidity": {
             "type": "string",
-            "format": "date-time"
+            "format": "date"
           },
           "presbiterOrdinationDate": {
             "type": "string",
-            "format": "date-time"
+            "format": "date"
           },
           "ministerOrdinationDate": {
             "type": "string",
-            "format": "date-time",
+            "format": "date",
             "nullable": true
           },
           "insurance": {
@@ -4153,7 +4293,7 @@
           },
           "birthday": {
             "type": "string",
-            "format": "date-time"
+            "format": "date"
           }
         },
         "additionalProperties": false
@@ -4175,15 +4315,15 @@
           },
           "cardValidity": {
             "type": "string",
-            "format": "date-time"
+            "format": "date"
           },
           "presbiterOrdinationDate": {
             "type": "string",
-            "format": "date-time"
+            "format": "date"
           },
           "ministerOrdinationDate": {
             "type": "string",
-            "format": "date-time",
+            "format": "date",
             "nullable": true
           },
           "address": {
@@ -4201,7 +4341,7 @@
           },
           "birthDate": {
             "type": "string",
-            "format": "date-time"
+            "format": "date"
           },
           "cpf": {
             "type": "string",
@@ -4242,17 +4382,17 @@
           },
           "cardValidity": {
             "type": "string",
-            "format": "date-time",
+            "format": "date",
             "nullable": true
           },
           "presbiterOrdinationDate": {
             "type": "string",
-            "format": "date-time",
+            "format": "date",
             "nullable": true
           },
           "ministerOrdinationDate": {
             "type": "string",
-            "format": "date-time",
+            "format": "date",
             "nullable": true
           },
           "address": {
@@ -4286,7 +4426,7 @@
           },
           "memberBirthday": {
             "type": "string",
-            "format": "date-time"
+            "format": "date"
           },
           "memberPhone": {
             "$ref": "#/components/schemas/PhoneResponseDTO"
@@ -4297,7 +4437,7 @@
           },
           "memberWeddingDate": {
             "type": "string",
-            "format": "date-time"
+            "format": "date"
           },
           "cpf": {
             "type": "string",
@@ -4312,15 +4452,15 @@
           },
           "cardValidity": {
             "type": "string",
-            "format": "date-time"
+            "format": "date"
           },
           "presbiterOrdinationDate": {
             "type": "string",
-            "format": "date-time"
+            "format": "date"
           },
           "ministerOrdinationDate": {
             "type": "string",
-            "format": "date-time",
+            "format": "date",
             "nullable": true
           },
           "address": {
@@ -4687,6 +4827,24 @@
           },
           "scope": {
             "$ref": "#/components/schemas/UserScope"
+          },
+          "churchId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "churchName": {
+            "type": "string",
+            "nullable": true
+          },
+          "cellId": {
+            "type": "integer",
+            "format": "int64",
+            "nullable": true
+          },
+          "cellName": {
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -4737,7 +4895,7 @@
   },
   "security": [
     {
-      "Bearer": []
+      "Bearer": [ ]
     }
   ]
 }

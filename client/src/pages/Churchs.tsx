@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ICRLayout from '../components/ICRLayout';
 import CRUDTable, { Column } from '../components/CRUDTable';
 import SmartSelect from '../components/SmartSelect';
 import MultiSelect from '../components/MultiSelect';
 import { useICRAuth } from '../contexts/ICRAuthContext';
-import { getScopeLevel, resolveScopeRestrictions } from '../lib/scope-access';
-import { useICRApi, Cell, Church, Federation, Minister } from '../hooks/useICRApi';
+import { getScopeLevel } from '../lib/scope-access';
+import { useICRApi, Church, Federation, Minister } from '../hooks/useICRApi';
 import { settledValue } from '@/lib/utils';
+import { buildPaginatedListEndpoint } from '../lib/paginated-list-query';
 import { useViaCEP } from '../hooks/useViaCEP';
 import { countrySelectItems, DEFAULT_COUNTRY_CODE, formatPostalCode, normalizePostalCode } from '../lib/country';
 import { toast } from 'sonner';
@@ -29,6 +30,9 @@ export default function Igrejas() {
   const { fetchApi } = useICRApi();
   const { user } = useICRAuth();
   const { fetchCEP, loading: cepLoading, error: cepError } = useViaCEP();
+  const scopeLevel = getScopeLevel(user?.scope, user?.username);
+  const isFederatedScope = scopeLevel === 'federated';
+  const isLocalScope = scopeLevel === 'local';
   const [data, setData] = useState<Church[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -41,64 +45,97 @@ export default function Igrejas() {
   const [saving, setSaving] = useState(false);
   const [federations, setFederations] = useState<Federation[]>([]);
   const [ministers, setMinisters] = useState<Minister[]>([]);
-  const [cells, setCells] = useState<Cell[]>([]);
+  const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
-  const [selectedFederationIds, setSelectedFederationIds] = useState<number[]>([]);
-  const scopeLevel = getScopeLevel(user?.scope, user?.username);
-  const isFederatedScope = scopeLevel === 'federated';
-  const isLocalScope = scopeLevel === 'local';
-
-  const restrictions = useMemo(
-    () => resolveScopeRestrictions({
-      scopeLevel,
-      userMemberId: user?.memberId,
-      userFamilyId: user?.familyId,
-      userChurchId: user?.churchId,
-      userFederationId: user?.federationId,
-      churches: data,
-      federations,
-      members: [],
-      families: [],
-      ministers,
-    }),
-    [data, federations, ministers, scopeLevel, user?.churchId, user?.familyId, user?.federationId, user?.memberId],
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [selectedFederationId, setSelectedFederationId] = useState<number | undefined>(() =>
+    isFederatedScope && typeof user?.federationId === 'number' ? user.federationId : undefined,
   );
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  const latestChurchesRequestRef = useRef(0);
 
-  const load = async () => {
+  const usesSingleChurchEndpoint = isLocalScope && typeof user?.churchId === 'number';
+  const churchesEndpoint = useMemo(() => {
+    const path = typeof selectedFederationId === 'number'
+      ? `/api/churches/federation/${selectedFederationId}`
+      : '/api/churches';
+
+    return buildPaginatedListEndpoint(path, {
+      pageNumber: page,
+      pageQuantity: pageSize,
+      querySearch: debouncedSearchTerm,
+    });
+  }, [debouncedSearchTerm, page, pageSize, selectedFederationId]);
+
+  const loadChurches = useCallback(async () => {
+    const requestId = ++latestChurchesRequestRef.current;
     setIsLoading(true);
     setError(null);
-    try {
-      const churchesRequest = isLocalScope && typeof user?.churchId === 'number'
-        ? fetchApi<Church>(`/api/churches/${user.churchId}`).then((church) => [church]).catch(() => [])
-        : isFederatedScope && typeof user?.federationId === 'number'
-          ? fetchApi<Church[]>(`/api/churches/federation/${user.federationId}`)
-          : fetchApi<Church[]>('/api/churches');
 
+    try {
+      const result = usesSingleChurchEndpoint
+        ? await fetchApi<Church>(`/api/churches/${user?.churchId}`)
+        : await fetchApi<Church[]>(churchesEndpoint);
+
+      if (requestId !== latestChurchesRequestRef.current) return;
+
+      const churchesData = usesSingleChurchEndpoint
+        ? result && !Array.isArray(result) ? [result as Church] : []
+        : Array.isArray(result) ? result : [];
+
+      if (!usesSingleChurchEndpoint && page > 1 && churchesData.length === 0) {
+        setPage((currentPage) => Math.max(1, currentPage - 1));
+        return;
+      }
+
+      setData(churchesData);
+      setHasNextPage(!usesSingleChurchEndpoint && churchesData.length === pageSize);
+    } catch (err) {
+      if (requestId === latestChurchesRequestRef.current) {
+        setError(err instanceof Error ? err.message : 'Erro ao carregar igrejas');
+      }
+    } finally {
+      if (requestId === latestChurchesRequestRef.current) {
+        setIsLoading(false);
+      }
+    }
+  }, [churchesEndpoint, fetchApi, page, pageSize, user?.churchId, usesSingleChurchEndpoint]);
+
+  useEffect(() => {
+    void loadChurches();
+
+    return () => {
+      latestChurchesRequestRef.current += 1;
+    };
+  }, [loadChurches]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setPage(1);
+      setDebouncedSearchTerm(searchTerm.trim());
+    }, 500);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    const loadReferenceData = async () => {
       const federationsRequest = isLocalScope
         ? Promise.resolve<Federation[]>([])
         : fetchApi<Federation[]>('/api/federations');
 
-      const [churchesResult, federationsResult, ministersResult, cellsResult] = await Promise.allSettled([
-        churchesRequest,
+      const [federationsResult, ministersResult] = await Promise.allSettled([
         federationsRequest,
-        fetchApi<Minister[]>('/api/ministers'),
-        fetchApi<Cell[]>('/api/cells'),
+        fetchApi<Minister[]>('/api/ministers?pageNumber=1&pageQuantity=200'),
       ]);
 
-      if (churchesResult.status === 'rejected') {
-        throw churchesResult.reason;
-      }
-
-      setData(Array.isArray(churchesResult.value) ? churchesResult.value : []);
       setFederations(settledValue(federationsResult) ?? []);
       setMinisters(settledValue(ministersResult) ?? []);
-      setCells(settledValue(cellsResult) ?? []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao carregar igrejas');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    };
+
+    void loadReferenceData();
+  }, [fetchApi, isLocalScope]);
 
   const handlePostalCodeChange = async (value: string) => {
     const normalizedPostalCode = normalizePostalCode(form.countryCode, value);
@@ -120,8 +157,6 @@ export default function Igrejas() {
       }
     }
   };
-
-  useEffect(() => { load(); }, []);
 
   const openAdd = () => {
     setEditItem(null);
@@ -196,7 +231,7 @@ const handleSave = async () => {
     }
 
     setShowModal(false);
-    await load(); // Recarrega a lista
+    await loadChurches();
   } catch (err) {
     console.error("Erro detalhado:", err);
     toast.error(err instanceof Error ? err.message : 'Erro ao salvar');
@@ -205,71 +240,8 @@ const handleSave = async () => {
   }
 };
   const handleDelete = async (item: Church) => {
-    const shouldMoveDependencies = window.confirm(
-      'Deseja mover os dados dependentes para outra igreja antes de excluir?\n\nOK = mover dependencias\nCancelar = excluir em cascata',
-    );
-
-    let targetChurchId: number | undefined;
-    let targetCellId: number | undefined;
-
-    if (shouldMoveDependencies) {
-      const availableChurches = data.filter((church) => church.id !== item.id);
-
-      if (availableChurches.length === 0) {
-        throw new Error('Nao existe outra igreja disponivel para mover os dados dependentes.');
-      }
-
-      const churchPrompt = window.prompt(
-        `Informe o ID da igreja de destino:\n${availableChurches
-          .map((church) => `${church.id} - ${church.name}`)
-          .join('\n')}`,
-      );
-
-      const parsedTargetChurchId = Number(churchPrompt);
-      if (!Number.isFinite(parsedTargetChurchId) || !availableChurches.some((church) => church.id === parsedTargetChurchId)) {
-        throw new Error('ID da igreja de destino invalido.');
-      }
-
-      targetChurchId = parsedTargetChurchId;
-
-      const targetChurchCells = cells.filter((cell) => cell.churchId === parsedTargetChurchId);
-      if (targetChurchCells.length > 0) {
-        const cellPrompt = window.prompt(
-          `Informe o ID da celula de destino (opcional):\n${targetChurchCells
-            .map((cell) => `${cell.id} - ${cell.name}`)
-            .join('\n')}`,
-        );
-
-        if (cellPrompt?.trim()) {
-          const parsedTargetCellId = Number(cellPrompt);
-          if (!Number.isFinite(parsedTargetCellId) || !targetChurchCells.some((cell) => cell.id === parsedTargetCellId)) {
-            throw new Error('ID da celula de destino invalido para a igreja escolhida.');
-          }
-          targetCellId = parsedTargetCellId;
-        }
-      }
-    }
-
-    const query = new URLSearchParams();
-    if (targetChurchId) query.set('targetChurchId', String(targetChurchId));
-    if (targetCellId) query.set('targetCellId', String(targetCellId));
-
-    const path = query.toString()
-      ? `/api/churches/bulk/${item.id}?${query.toString()}`
-      : `/api/churches/${item.id}`;
-
-    if (query.toString()) {
-      // when moving dependencies use bulk endpoint but with PATCH to mark/transfer
-      await fetchApi(path, { method: 'PATCH' });
-    } else {
-      // mark church as deactivated instead of deleting
-      await fetchApi(path, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ failureMessage: 'Desativada via interface' }),
-      });
-    }
-    load();
+    await fetchApi(`/api/churches/${item.id}`, { method: 'DELETE' });
+    await loadChurches();
   };
 
   const columns: Column<Church>[] = [
@@ -280,20 +252,6 @@ const handleSave = async () => {
     { key: 'city', label: 'Cidade', render: (item) => item.address?.city || '-' },
     { key: 'state', label: 'Estado', render: (item) => item.address?.state || '-' },
   ];
-
-  const scopedChurches = useMemo(() => {
-    if (scopeLevel === 'federation') return data;
-    const allowedChurchIds = new Set(restrictions.allowedChurchIds);
-    return data.filter((church) => allowedChurchIds.has(church.id));
-  }, [data, restrictions.allowedChurchIds, scopeLevel]);
-
-  const filteredData = useMemo(() => {
-    if (selectedFederationIds.length === 0) return data;
-
-    return scopedChurches.filter((church) =>
-      typeof church.federationId === 'number' && selectedFederationIds.includes(church.federationId),
-    );
-  }, [data, scopedChurches, selectedFederationIds]);
 
   const lockedFederationId = useMemo(() => {
     if (!isFederatedScope) return undefined;
@@ -315,7 +273,8 @@ const handleSave = async () => {
   useEffect(() => {
     if (!isFederatedScope || !lockedFederationId) return;
 
-    setSelectedFederationIds([lockedFederationId]);
+    setSelectedFederationId(lockedFederationId);
+    setPage(1);
     setForm((prev) => ({ ...prev, federationId: lockedFederationId }));
   }, [isFederatedScope, lockedFederationId]);
 
@@ -323,17 +282,28 @@ const handleSave = async () => {
   const handlePageSizeChange = (size: number) => {
     const safeSize = Math.min(100, Math.max(1, size));
     setPageSize(safeSize);
+    setPage(1);
   };
 
-  const topFilters = !isFederatedScope ? (
+  const handleSearch = (value: string) => {
+    setSearchTerm(value);
+  };
+
+  const handleFederationFilterChange = (ids: number[]) => {
+    setSelectedFederationId(ids[ids.length - 1]);
+    setPage(1);
+  };
+
+  const topFilters = !isFederatedScope && !isLocalScope ? (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
       <MultiSelect
-        label="Filtro por Áreas"
-        selectedIds={selectedFederationIds}
-        onChange={setSelectedFederationIds}
+        label="Filtro por Federação"
+        selectedIds={typeof selectedFederationId === 'number' ? [selectedFederationId] : []}
+        onChange={handleFederationFilterChange}
+        maxSelections={1}
         placeholder="Todas as áreas"
         fetchItems={async (page, query) => {
-          const result = await fetchApi<Federation[]>(`/api/federations?pageNumber=${page}&pageQuantity=10&name=${encodeURIComponent(query)}`);
+          const result = await fetchApi<Federation[]>(`/api/federations?pageNumber=${page}&pageQuantity=10&search=${encodeURIComponent(query.trim())}`);
           return Array.isArray(result) ? result.map(f => ({ id: f.id, name: `${f.id} - ${f.name}` })) : [];
         }}
       />
@@ -345,19 +315,25 @@ const handleSave = async () => {
       <CRUDTable
         title="Igrejas"
         topContent={topFilters}
-        data={filteredData}
-        pagination
-        pageSize={pageSize}
-        onPageSizeChange={handlePageSizeChange}
-        pageSizeOptions={[10, 25, 50, 100]}
+        data={data}
+        searchable={!usesSingleChurchEndpoint}
+        serverPagination={!usesSingleChurchEndpoint ? {
+          currentPage: page,
+          pageSize,
+          hasNextPage,
+          onPageChange: setPage,
+          onPageSizeChange: handlePageSizeChange,
+          pageSizeOptions: [10, 25, 50, 100],
+        } : undefined}
         columns={columns}
         isLoading={isLoading}
         error={error}
         onAdd={openAdd}
         onEdit={openEdit}
         onDelete={handleDelete}
-        onRefresh={load}
+        onRefresh={loadChurches}
         searchPlaceholder="Buscar igreja..."
+        onSearch={!usesSingleChurchEndpoint ? handleSearch : undefined}
         emptyMessage="Nenhuma igreja encontrada"
         addLabel="Nova Igreja"
       />

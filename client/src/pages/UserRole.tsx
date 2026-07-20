@@ -1,9 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ICRLayout from '../components/ICRLayout';
 import SmartSelect, { SmartSelectOption } from '../components/SmartSelect';
 import CRUDTable, { Column } from '../components/CRUDTable';
-import { Member, useICRApi } from '../hooks/useICRApi';
+import MultiSelect from '../components/MultiSelect';
+import { Cell, Church, Member, useICRApi } from '../hooks/useICRApi';
+import { useICRAuth } from '../contexts/ICRAuthContext';
+import { getScopeLevel } from '../lib/scope-access';
 import { settledValue } from '@/lib/utils';
+import { buildPaginatedListEndpoint } from '../lib/paginated-list-query';
 import { toast } from 'sonner';
 
 interface Usuario {
@@ -49,36 +53,6 @@ function toStringOrDash(value: unknown): string {
   return text.length > 0 ? text : '-';
 }
 
-function normalizeUsers(payload: unknown): Usuario[] {
-  const rawList = Array.isArray(payload)
-    ? payload
-    : payload && typeof payload === 'object' && Array.isArray((payload as { content?: unknown[] }).content)
-      ? (payload as { content: unknown[] }).content
-      : [];
-
-  return rawList.map((item, index) => {
-    const row = (item ?? {}) as Record<string, unknown>;
-    const numericId = Number(row.id);
-    const numericScope = Number(row.scope);
-    const numericMemberId = Number(row.memberId);
-
-    return {
-      id: Number.isFinite(numericId) && numericId > 0 ? numericId : index + 1,
-      username: toStringOrDash(row.username ?? row.login),
-      memberId: Number.isFinite(numericMemberId) && numericMemberId > 0 ? numericMemberId : null,
-      memberName:
-        typeof row.memberName === 'string' && row.memberName.trim()
-          ? row.memberName.trim()
-          : typeof row.churchMemberName === 'string' && row.churchMemberName.trim()
-            ? row.churchMemberName.trim()
-            : typeof row.federationMemberName === 'string' && row.federationMemberName.trim()
-              ? row.federationMemberName.trim()
-              : null,
-      scope: Number.isFinite(numericScope) ? numericScope : 2,
-    };
-  });
-}
-
 function normalizeRoles(payload: unknown): Role[] {
   const rawList = Array.isArray(payload)
     ? payload
@@ -117,6 +91,9 @@ const initialRoleForm: RoleForm = {
 
 export default function Usuarios() {
   const { fetchApi } = useICRApi();
+  const { user } = useICRAuth();
+  const scopeLevel = getScopeLevel(user?.scope, user?.username);
+  const isLocalScope = scopeLevel === 'local';
   const [data, setData] = useState<Usuario[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
@@ -136,51 +113,58 @@ export default function Usuarios() {
   const [roleForm, setRoleForm] = useState<RoleForm>(initialRoleForm);
   const [savingRole, setSavingRole] = useState(false);
   const [deletingRoleId, setDeletingRoleId] = useState<number | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [hasNextPage, setHasNextPage] = useState(false);
+  const [selectedChurchId, setSelectedChurchId] = useState<number | undefined>(() =>
+    isLocalScope && typeof user?.churchId === 'number' ? user.churchId : undefined,
+  );
+  const [selectedCellId, setSelectedCellId] = useState<number | undefined>();
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  const latestUsersRequestRef = useRef(0);
 
   const activeRoles = useMemo(() => roles.filter((role) => role.active), [roles]);
-  const usersWithResolvedMemberName = useMemo(() => {
-    return data.map((user) => {
-      if (!user.memberId) {
-        return {
-          ...user,
-          memberName: user.memberName ?? '-',
-        };
-      }
+  const usersEndpoint = useMemo(() => {
+    const hasFilter = typeof selectedChurchId === 'number' || typeof selectedCellId === 'number';
+    return buildPaginatedListEndpoint(
+      hasFilter ? '/api/user-roles/filter' : '/api/user-roles/users',
+      {
+        pageNumber: page,
+        pageQuantity: pageSize,
+        querySearch: debouncedSearchTerm,
+        filters: hasFilter ? { churchId: selectedChurchId, cellId: selectedCellId } : undefined,
+      },
+    );
+  }, [debouncedSearchTerm, page, pageSize, selectedCellId, selectedChurchId]);
 
-      const memberLookupName = members.find((member) => member.id === user.memberId)?.name?.trim();
-      const userMemberName = user.memberName?.trim();
-
-      if (memberLookupName) {
-        // When API returns username in memberName for restricted scopes, trust member lookup by memberId.
-        if (!userMemberName || userMemberName === '-' || userMemberName === user.username) {
-          return {
-            ...user,
-            memberName: memberLookupName,
-          };
-        }
-      }
-
-      return {
-        ...user,
-        memberName: userMemberName && userMemberName.length > 0 ? userMemberName : '-',
-      };
-    });
-  }, [data, members]);
-
-  const loadUsers = async () => {
+  const loadUsers = useCallback(async () => {
+    const requestId = ++latestUsersRequestRef.current;
     setIsLoading(true);
     setError(null);
 
     try {
-      const result = await fetchApi<unknown>('/api/user-roles/users');
-      setData(normalizeUsers(result));
+      const result = await fetchApi<Usuario[]>(usersEndpoint);
+      if (requestId !== latestUsersRequestRef.current) return;
+
+      const users = Array.isArray(result) ? result : [];
+      if (page > 1 && users.length === 0) {
+        setPage((currentPage) => Math.max(1, currentPage - 1));
+        return;
+      }
+
+      setData(users);
+      setHasNextPage(users.length === pageSize);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao carregar usuários');
-      setData([]);
+      if (requestId === latestUsersRequestRef.current) {
+        setError(err instanceof Error ? err.message : 'Erro ao carregar usuários');
+      }
     } finally {
-      setIsLoading(false);
+      if (requestId === latestUsersRequestRef.current) {
+        setIsLoading(false);
+      }
     }
-  };
+  }, [fetchApi, page, pageSize, usersEndpoint]);
 
   const fetchMemberItems = async (page: number, query: string): Promise<SmartSelectOption[]> => {
     const params = new URLSearchParams();
@@ -210,9 +194,32 @@ export default function Usuarios() {
   };
 
   useEffect(() => {
-    loadUsers();
-    loadLookups();
+    void loadUsers();
+
+    return () => {
+      latestUsersRequestRef.current += 1;
+    };
+  }, [loadUsers]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setPage(1);
+      setDebouncedSearchTerm(searchTerm.trim());
+    }, 500);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    void loadLookups();
   }, []);
+
+  useEffect(() => {
+    if (isLocalScope && typeof user?.churchId === 'number') {
+      setSelectedChurchId(user.churchId);
+      setPage(1);
+    }
+  }, [isLocalScope, user?.churchId]);
 
   const openAdd = () => {
     setEditItem(null);
@@ -415,11 +422,78 @@ export default function Usuarios() {
     },
   ];
 
+  const handlePageSizeChange = (size: number) => {
+    setPageSize(Math.min(100, Math.max(1, size)));
+    setPage(1);
+  };
+
+  const handleSearch = (value: string) => {
+    setSearchTerm(value);
+  };
+
+  const handleChurchFilterChange = (ids: number[]) => {
+    setSelectedChurchId(ids[ids.length - 1]);
+    setSelectedCellId(undefined);
+    setPage(1);
+  };
+
+  const handleCellFilterChange = (ids: number[]) => {
+    setSelectedCellId(ids[ids.length - 1]);
+    setPage(1);
+  };
+
+  const topFilters = (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+      {!isLocalScope && (
+        <MultiSelect
+          label="Filtro por Igreja"
+          selectedIds={typeof selectedChurchId === 'number' ? [selectedChurchId] : []}
+          onChange={handleChurchFilterChange}
+          maxSelections={1}
+          placeholder="Todas as igrejas"
+          fetchItems={async (page, query) => {
+            const result = await fetchApi<Church[]>(`/api/churches?pageNumber=${page}&pageQuantity=10&querySearch=${encodeURIComponent(query.trim())}`);
+            return Array.isArray(result) ? result.map((church) => ({ id: church.id, name: `${church.id} - ${church.name}` })) : [];
+          }}
+        />
+      )}
+      <MultiSelect
+        label="Filtro por Célula"
+        selectedIds={typeof selectedCellId === 'number' ? [selectedCellId] : []}
+        onChange={handleCellFilterChange}
+        maxSelections={1}
+        placeholder="Todas as células"
+        fetchItems={async (page, query) => {
+          const endpoint = buildPaginatedListEndpoint(
+            typeof selectedChurchId === 'number' ? '/api/cells/filter' : '/api/cells',
+            {
+              pageNumber: page,
+              pageQuantity: 10,
+              querySearch: query,
+              filters: typeof selectedChurchId === 'number' ? { churchId: selectedChurchId } : undefined,
+            },
+          );
+          const result = await fetchApi<Cell[]>(endpoint);
+          return Array.isArray(result) ? result.map((cell) => ({ id: cell.id, name: `${cell.id} - ${cell.name}` })) : [];
+        }}
+      />
+    </div>
+  );
+
   return (
     <ICRLayout title="Usuários">
       <CRUDTable
         title="Usuários"
-        data={usersWithResolvedMemberName}
+        topContent={topFilters}
+        data={data}
+        serverPagination={{
+          currentPage: page,
+          pageSize,
+          hasNextPage,
+          onPageChange: setPage,
+          onPageSizeChange: handlePageSizeChange,
+          pageSizeOptions: [10, 25, 50, 100],
+        }}
         columns={columns}
         isLoading={isLoading}
         error={error}
@@ -429,6 +503,7 @@ export default function Usuarios() {
         onRefresh={loadUsers}
         addLabel="Novo Usuário"
         searchPlaceholder="Buscar usuário..."
+        onSearch={handleSearch}
         emptyMessage="Nenhum usuário encontrado"
       />
 

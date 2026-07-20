@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ICRLayout from '../components/ICRLayout';
 import CRUDTable, { Column } from '../components/CRUDTable';
 import SmartSelect from '../components/SmartSelect';
@@ -8,6 +8,7 @@ import { buildLocalChurchFallback, getScopeLevel, resolveScopeRestrictions } fro
 import { useICRApi, Family, Church, Cell, Federation, Member, Minister } from '../hooks/useICRApi';
 import { countrySelectItems, DEFAULT_COUNTRY_CODE, formatPhoneNumber, normalizePhoneNumber, validatePhoneNumber } from '../lib/country';
 import { settledValue } from '@/lib/utils';
+import { buildPaginatedListEndpoint } from '../lib/paginated-list-query';
 import { handleDatePaste, formatDateOnly, parseDateOnly } from '../lib/date-utils';
 import { DateInputWithPaste } from '../components/ui/DateInputWithPaste';
 import { useViaCEP } from '../hooks/useViaCEP';
@@ -80,6 +81,8 @@ export default function Familias() {
   const { fetchApi } = useICRApi();
   const { user } = useICRAuth();
   const { fetchCEP } = useViaCEP();
+  const scopeLevel = getScopeLevel(user?.scope, user?.username);
+  const isLocalScope = scopeLevel === 'local';
   const todayDate = new Date().toISOString().split('T')[0];
   const [data, setData] = useState<Family[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -108,12 +111,13 @@ export default function Familias() {
   const [federations, setFederations] = useState<Federation[]>([]);
   const [ministers, setMinisters] = useState<Minister[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
-  const [selectedFederationIds, setSelectedFederationIds] = useState<number[]>([]);
-  const [selectedChurchIds, setSelectedChurchIds] = useState<number[]>([]);
-  const [selectedCellIds, setSelectedCellIds] = useState<number[]>([]);
-  const scopeLevel = getScopeLevel(user?.scope, user?.username);
-  const isLocalScope = scopeLevel === 'local';
-  const isFederatedScope = scopeLevel === 'federated';
+  const [selectedChurchId, setSelectedChurchId] = useState<number | undefined>(() =>
+    isLocalScope && typeof user?.churchId === 'number' ? user.churchId : undefined,
+  );
+  const [selectedCellId, setSelectedCellId] = useState<number | undefined>();
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  const latestFamiliesRequestRef = useRef(0);
   const shouldAutoCreateMinister = (role: number | '') => role === PASTOR_ROLE || role === PRESBITERO_ROLE;
 
   const normalizePhone = (value: string): string => value.replace(/\D/g, '').slice(0, 11);
@@ -247,10 +251,8 @@ export default function Familias() {
   useEffect(() => {
     const loadLookups = async () => {
       try {
-        const churchesRequest = isLocalScope && typeof user?.churchId === 'number'
-          ? fetchApi<Church>(`/api/churches/${user.churchId}`)
-              .then((church) => [church])
-              .catch(() => buildLocalChurchFallback(user.churchId))
+        const churchesRequest = isLocalScope
+          ? Promise.resolve(buildLocalChurchFallback(user?.churchId))
           : fetchApi<Church[]>('/api/churches');
 
         const federationsRequest = isLocalScope
@@ -282,26 +284,90 @@ export default function Familias() {
     loadLookups();
   }, []);
 
-  const load = async () => {
+  const familiesEndpoint = useMemo(() => {
+    const hasFilter = isLocalScope || typeof selectedChurchId === 'number' || typeof selectedCellId === 'number';
+    return buildPaginatedListEndpoint(
+      hasFilter ? '/api/families/filter' : '/api/families',
+      {
+        pageNumber: page,
+        pageQuantity: pageSize,
+        querySearch: debouncedSearchTerm,
+        filters: hasFilter ? { churchId: selectedChurchId, cellId: selectedCellId } : undefined,
+      },
+    );
+  }, [debouncedSearchTerm, isLocalScope, page, pageSize, selectedCellId, selectedChurchId]);
+
+  const nextFamiliesEndpoint = useMemo(() => {
+    const hasFilter = isLocalScope || typeof selectedChurchId === 'number' || typeof selectedCellId === 'number';
+    return buildPaginatedListEndpoint(
+      hasFilter ? '/api/families/filter' : '/api/families',
+      {
+        pageNumber: page + 1,
+        pageQuantity: pageSize,
+        querySearch: debouncedSearchTerm,
+        filters: hasFilter ? { churchId: selectedChurchId, cellId: selectedCellId } : undefined,
+      },
+    );
+  }, [debouncedSearchTerm, isLocalScope, page, pageSize, selectedCellId, selectedChurchId]);
+
+  const loadFamilies = useCallback(async () => {
+    const requestId = ++latestFamiliesRequestRef.current;
     setIsLoading(true);
     setError(null);
+
     try {
-      // A API decide qual conteúdo pertence à página. O front apenas pede e renderiza.
-      const result = await fetchApi<Family[]>(
-        `/api/families?pageNumber=${page}&pageQuantity=${pageSize}`,
-      );
+      const result = await fetchApi<Family[]>(familiesEndpoint);
+      if (requestId !== latestFamiliesRequestRef.current) return;
+
       const familiesData = Array.isArray(result) ? result : [];
 
-      setData(familiesData);
-      setHasNextPage(familiesData.length === pageSize);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao carregar famílias');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+      if (page > 1 && familiesData.length === 0) {
+        setHasNextPage(false);
+        setPage((currentPage) => Math.max(1, currentPage - 1));
+        return;
+      }
 
-  useEffect(() => { load(); }, [page, pageSize]);
+      let hasMoreFamilies = false;
+      if (familiesData.length === pageSize) {
+        try {
+          const nextPage = await fetchApi<Family[]>(nextFamiliesEndpoint);
+          hasMoreFamilies = Array.isArray(nextPage) && nextPage.length > 0;
+        } catch {
+          hasMoreFamilies = false;
+        }
+      }
+
+      if (requestId !== latestFamiliesRequestRef.current) return;
+
+      setData(familiesData);
+      setHasNextPage(hasMoreFamilies);
+    } catch (err) {
+      if (requestId === latestFamiliesRequestRef.current) {
+        setError(err instanceof Error ? err.message : 'Erro ao carregar famílias');
+      }
+    } finally {
+      if (requestId === latestFamiliesRequestRef.current) {
+        setIsLoading(false);
+      }
+    }
+  }, [familiesEndpoint, fetchApi, nextFamiliesEndpoint, page, pageSize]);
+
+  useEffect(() => {
+    void loadFamilies();
+
+    return () => {
+      latestFamiliesRequestRef.current += 1;
+    };
+  }, [loadFamilies]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setPage(1);
+      setDebouncedSearchTerm(searchTerm.trim());
+    }, 500);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [searchTerm]);
 
   const openAdd = () => {
     const initialChurchId = isLocalScope ? restrictions.lockedChurchId || '' : '';
@@ -379,12 +445,9 @@ export default function Familias() {
   }, [members, scopedFamilies]);
 
   useEffect(() => {
-    if (isFederatedScope && typeof restrictions.lockedFederationId === 'number') {
-      setSelectedFederationIds([restrictions.lockedFederationId]);
-    }
-
     if (isLocalScope && typeof restrictions.lockedChurchId === 'number') {
-      setSelectedChurchIds([restrictions.lockedChurchId]);
+      setSelectedChurchId(restrictions.lockedChurchId);
+      setPage(1);
       setForm((prev) => {
         const churchId = prev.churchId || restrictions.lockedChurchId || '';
         return {
@@ -394,7 +457,7 @@ export default function Familias() {
         };
       });
     }
-  }, [isFederatedScope, isLocalScope, restrictions.lockedChurchId, restrictions.lockedFederationId]);
+  }, [isLocalScope, restrictions.lockedChurchId]);
 
   // Filtra células apenas da igreja selecionada
   const availableCells = form.churchId ? scopedCells.filter(c => c.churchId === form.churchId) : scopedCells;
@@ -609,7 +672,7 @@ export default function Familias() {
         toast.success('Família e membros criados com sucesso');
       }
       setShowModal(false);
-      load();
+      void loadFamilies();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao salvar');
     } finally {
@@ -619,7 +682,7 @@ export default function Familias() {
 
   const handleDelete = async (item: Family) => {
     await fetchApi(`/api/families/${item.id}`, { method: 'DELETE' });
-    load();
+    await loadFamilies();
   };
 
   const columns: Column<Family>[] = [
@@ -640,39 +703,52 @@ export default function Familias() {
     setPage(1);
   };
 
+  const handleSearch = (value: string) => {
+    setSearchTerm(value);
+  };
+
+  const handleChurchFilterChange = (ids: number[]) => {
+    setSelectedChurchId(ids[ids.length - 1]);
+    setSelectedCellId(undefined);
+    setPage(1);
+  };
+
+  const handleCellFilterChange = (ids: number[]) => {
+    setSelectedCellId(ids[ids.length - 1]);
+    setPage(1);
+  };
+
   const topFilters = (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-      {!isLocalScope && !isFederatedScope && (
-        <MultiSelect
-          label="Filtro por Federações"
-          selectedIds={selectedFederationIds}
-          onChange={setSelectedFederationIds}
-          placeholder="Todas as federações"
-          fetchItems={async (page, query) => {
-            const result = await fetchApi<Federation[]>(`/api/federations?pageNumber=${page}&pageQuantity=10&name=${encodeURIComponent(query)}`);
-            return Array.isArray(result) ? result.map(f => ({ id: f.id, name: `${f.id} - ${f.name}` })) : [];
-          }}
-        />
-      )}
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
       {!isLocalScope && (
         <MultiSelect
-          label="Filtro por Igrejas"
-          selectedIds={selectedChurchIds}
-          onChange={setSelectedChurchIds}
+          label="Filtro por Igreja"
+          selectedIds={typeof selectedChurchId === 'number' ? [selectedChurchId] : []}
+          onChange={handleChurchFilterChange}
+          maxSelections={1}
           placeholder="Todas as igrejas"
           fetchItems={async (page, query) => {
-            const result = await fetchApi<Church[]>(`/api/churches?pageNumber=${page}&pageQuantity=10&name=${encodeURIComponent(query)}`);
+            const result = await fetchApi<Church[]>(`/api/churches?pageNumber=${page}&pageQuantity=10&querySearch=${encodeURIComponent(query.trim())}`);
             return Array.isArray(result) ? result.map(c => ({ id: c.id, name: `${c.id} - ${c.name}` })) : [];
           }}
         />
       )}
       <MultiSelect
-        label="Filtro por Células"
-        selectedIds={selectedCellIds}
-        onChange={setSelectedCellIds}
+        label="Filtro por Célula"
+        selectedIds={typeof selectedCellId === 'number' ? [selectedCellId] : []}
+        onChange={handleCellFilterChange}
+        maxSelections={1}
         placeholder="Todas as células"
         fetchItems={async (page, query) => {
-          const result = await fetchApi<Cell[]>(`/api/cells?pageNumber=${page}&pageQuantity=10&name=${encodeURIComponent(query)}`);
+          const params = new URLSearchParams({
+            pageNumber: String(page),
+            pageQuantity: '10',
+          });
+          if (query.trim()) params.append('querySearch', query.trim());
+          if (typeof selectedChurchId === 'number') params.append('churchId', String(selectedChurchId));
+
+          const endpoint = typeof selectedChurchId === 'number' ? '/api/cells/filter' : '/api/cells';
+          const result = await fetchApi<Cell[]>(`${endpoint}?${params.toString()}`);
           return Array.isArray(result) ? result.map(c => ({ id: c.id, name: `${c.id} - ${c.name}` })) : [];
         }}
       />
@@ -685,10 +761,6 @@ export default function Familias() {
         title="Famílias"
         topContent={topFilters}
         data={data}
-        pagination={false}
-        pageSize={pageSize}
-        onPageSizeChange={handlePageSizeChange}
-        pageSizeOptions={[10, 25, 50, 100]}
         serverPagination={{
           currentPage: page,
           pageSize,
@@ -706,8 +778,9 @@ export default function Familias() {
         onAdd={openAdd}
         onEdit={openEdit}
         onDelete={handleDelete}
-        onRefresh={load}
+        onRefresh={loadFamilies}
         searchPlaceholder="Buscar família..."
+        onSearch={handleSearch}
         emptyMessage="Nenhuma família encontrada"
         addLabel="Nova Família"
       />
@@ -764,7 +837,7 @@ export default function Familias() {
                     params.append('pageQuantity', '10');
                     if (query) params.append('query', query);
                     if (form.churchId) params.append('churchId', String(form.churchId));
-                    const result = await fetchApi<Cell[]>(`/api/cells?${params}`);
+                    const result = await fetchApi<Cell[]>(`/api/cells/filter?${params}`);
                     return Array.isArray(result) ? result.map(c => ({ id: c.id, name: `${c.id} - ${c.name}` })) : [];
                   }}
                   placeholder={form.churchId ? 'Selecione uma célula' : 'Escolha uma igreja primeiro'}

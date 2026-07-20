@@ -1,16 +1,30 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { jsPDF } from 'jspdf';
 import * as XLSX from 'xlsx';
 import ICRLayout from '../components/ICRLayout';
-import { useICRApi, Minister } from '../hooks/useICRApi';
-import { getMinisterCoverageBadgeClass, getMinisterCoverageLabel, resolveMinisterCoverageStatus, summarizeMinisterCoverage } from '../lib/minister-coverage';
-import { useSharedMinisterData } from '../hooks/useSharedMinisterData';
+import { useICRApi } from '../hooks/useICRApi';
 import { formatDateOnly } from '../lib/date-utils';
+
+interface MinisterInsuranceListItem {
+  fullName: string | null;
+  birthDate: string;
+  cpf: string | null;
+  email: string | null;
+  phone: {
+    countryCode?: string;
+    countryName?: string;
+    number?: string;
+    displayFormat?: string;
+    internationalFormat?: string;
+    e164Format?: string;
+    isMobileNumber?: boolean;
+  } | null;
+  insurance: boolean;
+}
 
 export default function MinistersInsurance() {
   const { fetchApi } = useICRApi();
-  const { data: sharedData, isLoading: sharedLoading, error: sharedError } = useSharedMinisterData();
-  const [data, setData] = useState<Minister[]>([]);
+  const [data, setData] = useState<MinisterInsuranceListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
@@ -18,19 +32,38 @@ export default function MinistersInsurance() {
   const [generatedPdfName, setGeneratedPdfName] = useState<string>('seguro-ministros.pdf');
   const [isGeneratingExcel, setIsGeneratingExcel] = useState(false);
   const blobUrlRef = useRef<string | null>(null);
+  const latestRequestRef = useRef(0);
+
+  const loadInsuredMinisters = useCallback(async () => {
+    const requestId = ++latestRequestRef.current;
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetchApi<MinisterInsuranceListItem[]>('/api/ministers/insured');
+      if (requestId !== latestRequestRef.current) return;
+      setData(Array.isArray(response) ? response : []);
+    } catch (loadError) {
+      if (requestId !== latestRequestRef.current) return;
+      setData([]);
+      setError(loadError instanceof Error ? loadError.message : 'Erro ao carregar os ministros segurados.');
+    } finally {
+      if (requestId === latestRequestRef.current) setIsLoading(false);
+    }
+  }, [fetchApi]);
 
   useEffect(() => {
-    setData(sharedData);
-    setIsLoading(sharedLoading);
-    setError(sharedError);
-  }, [sharedData, sharedLoading, sharedError]);
+    void loadInsuredMinisters();
+    return () => {
+      latestRequestRef.current += 1;
+    };
+  }, [loadInsuredMinisters]);
 
-  const summary = useMemo(() => summarizeMinisterCoverage(data), [data]);
-
-  const sortedData = useMemo(
-    () => [...data].sort((a, b) => (a.memberName || '').localeCompare((b.memberName || ''), 'pt-BR', { sensitivity: 'base' })),
-    [data],
-  );
+  const summary = useMemo(() => ({
+    total: data.length,
+    covered: data.filter((minister) => minister.insurance).length,
+    uncovered: data.filter((minister) => !minister.insurance).length,
+  }), [data]);
 
   const getTodayDateOnly = (): string => {
     const today = new Date();
@@ -46,7 +79,7 @@ export default function MinistersInsurance() {
     return `Vitória, ${Number(day)} de ${monthName} de ${year}`;
   };
 const getPhoneDisplay = (
-  phone?: Minister['memberPhone']
+  phone?: MinisterInsuranceListItem['phone']
 ) => {
   if (!phone) return '-';
 
@@ -201,26 +234,14 @@ const getPhoneDisplay = (
       });
     };
 
-    const insuredMinisters = sortedData.filter((minister) => {
-      const status = normalizePdfText(
-        minister.insuranceStatus ?? minister.status ?? minister.coverageStatus ?? '',
-      ).toUpperCase();
-
-      if (status === 'NÃO SEGURADO' || status === 'NAO SEGURADO') {
-        return false;
-      }
-
-      return resolveMinisterCoverageStatus(minister) === 'covered';
-    });
-
     prepareFirstPage();
 
-    insuredMinisters.forEach((minister, index) => {
-      const name = normalizePdfText(minister.memberName || '-');
+    data.forEach((minister, index) => {
+      const name = normalizePdfText(minister.fullName || '-');
       const cpf = normalizePdfText(minister.cpf || '-');
-      const phone = normalizePdfText(getPhoneDisplay(minister.memberPhone) || '-');
+      const phone = normalizePdfText(getPhoneDisplay(minister.phone) || '-');
       const email = normalizePdfText(minister.email || '-');
-      const birthDate = normalizePdfText(formatDateOnly(minister.memberBirthday));
+      const birthDate = normalizePdfText(formatDateOnly(minister.birthDate));
 
       const nameColumnWidth = columnWidths[0];
       const cpfColumnWidth = columnWidths[1];
@@ -317,24 +338,12 @@ const getPhoneDisplay = (
   const handleGenerateExcel = async () => {
     setIsGeneratingExcel(true);
     try {
-      const insuredMinisters = sortedData.filter((minister) => {
-        const status = normalizePdfText(
-          minister.insuranceStatus ?? minister.status ?? minister.coverageStatus ?? '',
-        ).toUpperCase();
-
-        if (status === 'NÃO SEGURADO' || status === 'NAO SEGURADO') {
-          return false;
-        }
-
-        return resolveMinisterCoverageStatus(minister) === 'covered';
-      });
-
-      const excelData = insuredMinisters.map((minister) => ({
-        Nome: minister.memberName || '-',
+      const excelData = data.map((minister) => ({
+        Nome: minister.fullName || '-',
         CPF: minister.cpf || '-',
-        Telefone: getPhoneDisplay(minister.memberPhone) || '-',
+        Telefone: getPhoneDisplay(minister.phone) || '-',
         'E-mail': minister.email || '-',
-        Nascimento: formatDateOnly(minister.memberBirthday),
+        Nascimento: formatDateOnly(minister.birthDate),
       }));
 
       const worksheet = XLSX.utils.json_to_sheet(excelData);
@@ -376,7 +385,7 @@ const getPhoneDisplay = (
             <p className="text-white text-3xl font-['Nunito'] font-semibold">{summary.total}</p>
           </div>
           <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/10 p-4">
-            <p className="text-emerald-200 text-xs uppercase tracking-[0.2em] font-['Nunito']">Segurados / elegíveis</p>
+            <p className="text-emerald-200 text-xs uppercase tracking-[0.2em] font-['Nunito']">Segurados</p>
             <p className="text-white text-3xl font-['Nunito'] font-semibold">{summary.covered}</p>
           </div>
           <div className="rounded-2xl border border-rose-500/20 bg-rose-500/10 p-4">
@@ -402,14 +411,14 @@ const getPhoneDisplay = (
             <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
               <div>
                 <h2 className="text-white text-2xl font-['Nunito'] font-semibold mb-1">Lista de ministros</h2>
-                <p className="text-white/45 font-['Nunito']">Ordenado alfabeticamente. Os não segurados aparecem em vermelho.</p>
+                <p className="text-white/45 font-['Nunito']">Dados fornecidos diretamente pelo cadastro de seguros.</p>
               </div>
               <div className="flex items-center gap-3 flex-wrap">
-                <div className="text-white/55 text-sm font-['Nunito']">{sortedData.length} registros</div>
+                <div className="text-white/55 text-sm font-['Nunito']">{data.length} registros</div>
                 <button
                   type="button"
                   onClick={handleGeneratePdf}
-                  disabled={isGeneratingPdf || sortedData.length === 0}
+                  disabled={isGeneratingPdf || data.length === 0}
                   className="rounded-xl bg-[#017158] px-4 py-2 text-sm font-['Nunito'] text-white hover:bg-[#01906f] transition-colors disabled:opacity-50"
                 >
                   {isGeneratingPdf ? 'Gerando...' : 'Gerar Relatório'}
@@ -417,7 +426,7 @@ const getPhoneDisplay = (
                 <button
                   type="button"
                   onClick={handleGenerateExcel}
-                  disabled={isGeneratingExcel || sortedData.length === 0}
+                  disabled={isGeneratingExcel || data.length === 0}
                   className="rounded-xl bg-[#017158] px-4 py-2 text-sm font-['Nunito'] text-white hover:bg-[#01906f] transition-colors disabled:opacity-50"
                 >
                   {isGeneratingExcel ? 'Gerando...' : 'Baixar Excel'}
@@ -435,29 +444,22 @@ const getPhoneDisplay = (
               </div>
 
               <div className="divide-y divide-white/10">
-                {sortedData.length === 0 ? (
+                {data.length === 0 ? (
                   <div className="px-4 py-6 text-white/60 font-['Nunito']">Nenhum ministro encontrado.</div>
-                ) : sortedData.map((minister) => {
-                  const isCovered = resolveMinisterCoverageStatus(minister) === 'covered';
-
-                  return (
+                ) : data.map((minister, index) => (
                     <div
-                      key={minister.id}
-                      className={`grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-0 px-4 py-4 text-sm font-['Nunito'] ${isCovered ? 'bg-transparent text-white' : 'bg-rose-500/10 text-rose-100'}`}
+                      key={`${minister.cpf ?? minister.email ?? minister.fullName ?? 'minister'}-${index}`}
+                      className={`grid grid-cols-[2fr_1fr_1fr_1fr_1fr] gap-0 px-4 py-4 text-sm font-['Nunito'] ${minister.insurance ? 'bg-transparent text-white' : 'bg-rose-500/10 text-rose-100'}`}
                     >
                       <div className="pr-3">
-                        <p className="font-semibold">{minister.memberName || '-'}</p>
-                        <p className="text-xs text-white/45 mt-1">
-                          {minister.federationMemberName || '-'} • {minister.churchMemberName || '-'}
-                        </p>
+                        <p className="font-semibold">{minister.fullName || '-'}</p>
                       </div>
                       <div className="pr-3">{minister.cpf || '-'}</div>
-                      <div className="pr-3">  {getPhoneDisplay(minister.memberPhone || minister.member?.cellPhone)}</div>                      
+                      <div className="pr-3">{getPhoneDisplay(minister.phone)}</div>
                       <div className="pr-3 break-words">{minister.email || '-'}</div>
-                      <div className="pr-3">{formatDateOnly(minister.memberBirthday)}</div>
+                      <div className="pr-3">{formatDateOnly(minister.birthDate)}</div>
                     </div>
-                  );
-                })}
+                ))}
               </div>
             </div>
           </section>
