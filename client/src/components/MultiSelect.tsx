@@ -8,6 +8,7 @@ interface MultiSelectProps {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  maxSelections?: number;
   fetchItems: (page: number, query: string) => Promise<SmartSelectOption[]>;
 }
 
@@ -18,6 +19,7 @@ export default function MultiSelect({
   placeholder = 'Selecione...',
   disabled = false,
   className = '',
+  maxSelections,
   fetchItems,
 }: MultiSelectProps) {
   const [selectedItems, setSelectedItems] = useState<SmartSelectOption[]>([]);
@@ -66,7 +68,8 @@ export default function MultiSelect({
       onChange(selectedIds.filter(existingId => existingId !== numericId));
     } else {
       // Adicionar à seleção
-      onChange([...selectedIds, numericId]);
+      const nextIds = [...selectedIds, numericId];
+      onChange(maxSelections ? nextIds.slice(-maxSelections) : nextIds);
     }
   };
 
@@ -84,12 +87,6 @@ export default function MultiSelect({
     return `${selectedIds.length} itens selecionados`;
   };
 
-  // Item "fictício" para o SmartSelect que representa a ação de adicionar
-  const addOption: SmartSelectOption = {
-    id: '__add__',
-    name: `Adicionar ${selectedIds.length > 0 ? 'outro' : ''}...`,
-  };
-
   return (
     <div className={`relative ${className}`}>
       <label className="text-white/70 text-sm font-['Nunito'] block mb-1">
@@ -97,24 +94,27 @@ export default function MultiSelect({
       </label>
       
       {/* Mostrar itens selecionados como tags */}
-      {selectedItems.length > 0 && (
+      {selectedIds.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-2">
-          {selectedItems.map(item => (
-            <span
-              key={item.id}
-              className="inline-flex items-center gap-1 px-3 py-1 bg-[#017158]/20 border border-[#017158]/30 rounded-lg text-white text-sm font-['Nunito']"
-            >
-              <span className="truncate max-w-[200px]">{item.name}</span>
-              <button
-                type="button"
-                onClick={() => handleRemove(item.id as number)}
-                className="hover:text-red-400 transition-colors flex-shrink-0"
-                disabled={disabled}
+          {selectedIds.map((id) => {
+            const item = selectedItems.find((selectedItem) => selectedItem.id === id);
+            return (
+              <span
+                key={id}
+                className="inline-flex items-center gap-1 px-3 py-1 bg-[#017158]/20 border border-[#017158]/30 rounded-lg text-white text-sm font-['Nunito']"
               >
-                <span className="material-icons text-sm">close</span>
-              </button>
-            </span>
-          ))}
+                <span className="truncate max-w-[200px]">{item?.name || `ID ${id}`}</span>
+                <button
+                  type="button"
+                  onClick={() => handleRemove(id)}
+                  className="hover:text-red-400 transition-colors flex-shrink-0"
+                  disabled={disabled}
+                >
+                  <span className="material-icons text-sm">close</span>
+                </button>
+              </span>
+            );
+          })}
         </div>
       )}
 

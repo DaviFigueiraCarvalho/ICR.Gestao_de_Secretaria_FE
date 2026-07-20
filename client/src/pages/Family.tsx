@@ -103,7 +103,6 @@ export default function Familias() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [hasNextPage, setHasNextPage] = useState(false);
-  const [serverPaginationEnabled, setServerPaginationEnabled] = useState(true);
   const [churches, setChurches] = useState<Church[]>([]);
   const [cells, setCells] = useState<Cell[]>([]);
   const [federations, setFederations] = useState<Federation[]>([]);
@@ -115,9 +114,6 @@ export default function Familias() {
   const scopeLevel = getScopeLevel(user?.scope, user?.username);
   const isLocalScope = scopeLevel === 'local';
   const isFederatedScope = scopeLevel === 'federated';
-  const isForbiddenError = (err: unknown) =>
-    err instanceof Error && (err.message.includes('403') || err.message.toLowerCase().includes('forbidden'));
-
   const shouldAutoCreateMinister = (role: number | '') => role === PASTOR_ROLE || role === PRESBITERO_ROLE;
 
   const normalizePhone = (value: string): string => value.replace(/\D/g, '').slice(0, 11);
@@ -290,42 +286,22 @@ export default function Familias() {
     setIsLoading(true);
     setError(null);
     try {
+      // A API decide qual conteúdo pertence à página. O front apenas pede e renderiza.
       const result = await fetchApi<Family[]>(
-        serverPaginationEnabled
-          ? `/api/families?pageNumber=${page}&pageQuantity=${pageSize}`
-          : '/api/families',
+        `/api/families?pageNumber=${page}&pageQuantity=${pageSize}`,
       );
       const familiesData = Array.isArray(result) ? result : [];
 
-      if (serverPaginationEnabled && page > 1 && familiesData.length === 0) {
-        setPage((prev) => Math.max(1, prev - 1));
-        return;
-      }
-
       setData(familiesData);
-      setHasNextPage(serverPaginationEnabled && familiesData.length === pageSize);
+      setHasNextPage(familiesData.length === pageSize);
     } catch (err) {
-      if (serverPaginationEnabled && isForbiddenError(err)) {
-        try {
-          const fallbackResult = await fetchApi<Family[]>('/api/families');
-          setData(Array.isArray(fallbackResult) ? fallbackResult : []);
-          setHasNextPage(false);
-          setServerPaginationEnabled(false);
-          setPage(1);
-          return;
-        } catch (fallbackErr) {
-          setError(fallbackErr instanceof Error ? fallbackErr.message : 'Erro ao carregar famílias');
-          return;
-        }
-      }
-
       setError(err instanceof Error ? err.message : 'Erro ao carregar famílias');
     } finally {
       setIsLoading(false);
     }
   };
 
-  useEffect(() => { load(); }, [page, pageSize, serverPaginationEnabled]);
+  useEffect(() => { load(); }, [page, pageSize]);
 
   const openAdd = () => {
     const initialChurchId = isLocalScope ? restrictions.lockedChurchId || '' : '';
@@ -658,27 +634,6 @@ export default function Familias() {
 
   const setF = (key: keyof FamiliaForm, val: string | number) => setForm(prev => ({ ...prev, [key]: val }));
 
-  const filteredData = useMemo(() => {
-    return scopedFamilies.filter((family) => {
-      const church = scopedChurches.find((churchItem) => churchItem.id === family.churchId);
-      const federationId = church?.federationId;
-
-      const federationMatch =
-        selectedFederationIds.length === 0 ||
-        (typeof federationId === 'number' && selectedFederationIds.includes(federationId));
-
-      const churchMatch =
-        selectedChurchIds.length === 0 ||
-        (typeof family.churchId === 'number' && selectedChurchIds.includes(family.churchId));
-
-      const cellMatch =
-        selectedCellIds.length === 0 ||
-        (typeof family.cellId === 'number' && selectedCellIds.includes(family.cellId));
-
-      return federationMatch && churchMatch && cellMatch;
-    });
-  }, [scopedChurches, scopedFamilies, selectedCellIds, selectedChurchIds, selectedFederationIds]);
-
   const handlePageSizeChange = (size: number) => {
     const safeSize = Math.min(100, Math.max(1, size));
     setPageSize(safeSize);
@@ -729,19 +684,19 @@ export default function Familias() {
       <CRUDTable
         title="Famílias"
         topContent={topFilters}
-        data={filteredData}
-        pagination={!serverPaginationEnabled}
+        data={data}
+        pagination={false}
         pageSize={pageSize}
         onPageSizeChange={handlePageSizeChange}
         pageSizeOptions={[10, 25, 50, 100]}
-        serverPagination={serverPaginationEnabled ? {
+        serverPagination={{
           currentPage: page,
           pageSize,
           hasNextPage,
           onPageChange: setPage,
           onPageSizeChange: handlePageSizeChange,
           pageSizeOptions: [10, 25, 50, 100],
-        } : undefined}
+        }}
         columns={columns}
         isLoading={isLoading}
         error={error}

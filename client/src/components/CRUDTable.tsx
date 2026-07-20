@@ -272,10 +272,8 @@ export default function CRUDTable<T extends { id: number }>({
                   type="text"
                   value={search}
                   onChange={(e) => {
-                    console.log('[CRUDTable Search Debug] Input changed, value:', e.target.value);
                     setSearch(e.target.value);
                     if (onSearch) {
-                      console.log('[CRUDTable Search Debug] Calling onSearch callback with value:', e.target.value);
                       onSearch(e.target.value);
                     }
                   }}

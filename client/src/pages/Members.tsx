@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import ICRLayout from '../components/ICRLayout';
 import CRUDTable, { Column } from '../components/CRUDTable';
 import SmartSelect, { SmartSelectOption } from '../components/SmartSelect';
@@ -7,6 +7,7 @@ import { useICRAuth } from '../contexts/ICRAuthContext';
 import { buildLocalChurchFallback, getScopeLevel, resolveScopeRestrictions } from '../lib/scope-access';
 import { useICRApi, Member, Family, Church, Cell, Federation, Minister } from '../hooks/useICRApi';
 import { settledValue } from '@/lib/utils';
+import { buildMemberListEndpoint } from '../lib/member-list-query';
 import { useViaCEP } from '../hooks/useViaCEP';
 import { handleDatePaste, formatDateOnly, parseDateOnly } from '../lib/date-utils';
 import { DateInputWithPaste } from '../components/ui/DateInputWithPaste';
@@ -70,6 +71,8 @@ const getGenderValue = (value: unknown): number => {
   return 1;
 };
 
+const getLastSelectedId = (ids: number[]): number | undefined => ids[ids.length - 1];
+
 const EMPTY_MINISTER_FORM: MinistroInlineForm = {
   cpf: '',
   email: '',
@@ -91,6 +94,9 @@ export default function Membros() {
   const { fetchApi } = useICRApi();
   const { user } = useICRAuth();
   const { fetchCEP, loading: ministerCepLoading, error: ministerCepError } = useViaCEP();
+  const scopeLevel = getScopeLevel(user?.scope, user?.username);
+  const isLocalScope = scopeLevel === 'local';
+  const isFederatedScope = scopeLevel === 'federated';
   const todayDate = new Date().toISOString().split('T')[0];
   const [data, setData] = useState<Member[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -105,30 +111,28 @@ export default function Membros() {
   const [phoneError, setPhoneError] = useState<string | null>(null);
   const [families, setFamilies] = useState<Family[]>([]);
   const [churches, setChurches] = useState<Church[]>([]);
-  const [cells, setCells] = useState<Cell[]>([]);
   const [federations, setFederations] = useState<Federation[]>([]);
   const [ministers, setMinisters] = useState<Minister[]>([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
   const [hasNextPage, setHasNextPage] = useState(false);
-  const [serverPaginationEnabled, setServerPaginationEnabled] = useState(true);
-  const [selectedFederationIds, setSelectedFederationIds] = useState<number[]>([]);
-  const [selectedChurchIds, setSelectedChurchIds] = useState<number[]>([]);
-  const [selectedCellIds, setSelectedCellIds] = useState<number[]>([]);
+  const [selectedFederationId, setSelectedFederationId] = useState<number | undefined>(() =>
+    isFederatedScope && typeof user?.federationId === 'number' ? user.federationId : undefined,
+  );
+  const [selectedChurchId, setSelectedChurchId] = useState<number | undefined>(() =>
+    isLocalScope && typeof user?.churchId === 'number' ? user.churchId : undefined,
+  );
+  const [selectedCellId, setSelectedCellId] = useState<number | undefined>();
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [showMinisterEditModal, setShowMinisterEditModal] = useState(false);
   const [selectedMinister, setSelectedMinister] = useState<Minister | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const scopeLevel = getScopeLevel(user?.scope, user?.username);
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  const latestMembersRequestRef = useRef(0);
   const scopedChurchesRef = useRef<Church[]>([]);
-  const isLocalScope = scopeLevel === 'local';
-  const isFederatedScope = scopeLevel === 'federated';
 
   const shouldAutoCreateMinister = (role: number | '') => role === PASTOR_ROLE || role === PRESBITERO_ROLE;
   const isPresbiteroSelected = form.role === PRESBITERO_ROLE;
-  const isForbiddenError = (err: unknown) =>
-    err instanceof Error && (err.message.includes('403') || err.message.toLowerCase().includes('forbidden'));
 
   const handleMinisterCEPChange = async (value: string) => {
     const normalizedPostalCode = normalizePostalCode(ministerForm.countryCode, value);
@@ -208,149 +212,88 @@ export default function Membros() {
     return 'created';
   };
 
-  const hasActiveFilters = useMemo(
-    () => selectedFederationIds.length > 0 || selectedChurchIds.length > 0 || selectedCellIds.length > 0,
-    [selectedFederationIds, selectedChurchIds, selectedCellIds],
-  );
+  const membersEndpoint = useMemo(() => buildMemberListEndpoint({
+    pageNumber: page,
+    pageQuantity: pageSize,
+    querySearch: debouncedSearchTerm,
+    federationId: selectedFederationId,
+    churchId: selectedChurchId,
+    cellId: selectedCellId,
+  }), [
+    debouncedSearchTerm,
+    page,
+    pageSize,
+    selectedCellId,
+    selectedChurchId,
+    selectedFederationId,
+  ]);
 
-  const buildFilterUrl = (): string => {
-    const params = new URLSearchParams();
-    if (selectedFederationIds.length > 0) {
-      params.append('federationId', selectedFederationIds[0].toString());
-    }
-    if (selectedChurchIds.length > 0) {
-      params.append('churchId', selectedChurchIds[0].toString());
-    }
-    if (selectedCellIds.length > 0) {
-      params.append('cellId', selectedCellIds[0].toString());
-    }
-    return `/api/members/filter?${params.toString()}`;
-  };
-
-  const load = async () => {
+  const loadMembers = useCallback(async () => {
+    const requestId = ++latestMembersRequestRef.current;
     setIsLoading(true);
     setError(null);
+
     try {
-      const buildMembersEndpoint = (): string => {
-        if (hasActiveFilters) {
-          return buildFilterUrl();
-        }
+      const result = await fetchApi<Member[]>(membersEndpoint);
 
-        if (!serverPaginationEnabled) {
-          return '/api/members';
-        }
+      if (requestId !== latestMembersRequestRef.current) return;
 
-        const params = new URLSearchParams();
-        params.append('pageNumber', String(page));
-        params.append('pageQuantity', String(pageSize));
-
-        if (searchTerm.trim()) {
-          params.append('querySearch', searchTerm.trim());
-          console.log('[Members Search Debug] searchTerm:', searchTerm, 'querySearch param added');
-        }
-
-        const endpoint = `/api/members?${params.toString()}`;
-        console.log('[Members Search Debug] Final endpoint:', endpoint);
-        return endpoint;
-      };
-
-      const membersEndpoint = buildMembersEndpoint();
-
-      const requestList = [
-        fetchApi<Member[]>(membersEndpoint),
-        fetchApi<Family[]>('/api/families?pageNumber=1&pageQuantity=100'),
-        isLocalScope && typeof user?.churchId === 'number'
-          ? fetchApi<Church>(`/api/churches/${user.churchId}`).then((church) => [church]).catch(() => buildLocalChurchFallback(user.churchId))
-          : fetchApi<Church[]>('/api/churches'),
-        fetchApi<Cell[]>('/api/cells'),
-        isLocalScope ? Promise.resolve<Federation[]>([]) : fetchApi<Federation[]>('/api/federations'),
-        isLocalScope ? Promise.resolve<Minister[]>([]) : fetchApi<Minister[]>('/api/ministers?pageNumber=1&pageQuantity=200'),
-      ];
-
-      const [membersResult, familiesResult, churchesResult, cellsResult, federationsResult, ministersResult] = await Promise.allSettled(requestList);
-
-      if (membersResult.status === 'rejected') {
-        if (serverPaginationEnabled && !hasActiveFilters && isForbiddenError(membersResult.reason)) {
-          const fallbackResults = await Promise.allSettled([
-            fetchApi<Member[]>('/api/members'),
-            fetchApi<Family[]>('/api/families?pageNumber=1&pageQuantity=100'),
-            fetchApi<Church[]>('/api/churches'),
-            fetchApi<Cell[]>('/api/cells'),
-            fetchApi<Federation[]>('/api/federations'),
-            fetchApi<Minister[]>('/api/ministers?pageNumber=1&pageQuantity=200'),
-          ]);
-
-          const [fallbackMembersResult, fallbackFamiliesResult, fallbackChurchesResult, fallbackCellsResult, fallbackFederationsResult, fallbackMinistersResult] = fallbackResults;
-          const fallbackMembersData = (settledValue(fallbackMembersResult) ?? []) as Member[];
-
-          if (page > 1 && fallbackMembersData.length === 0) {
-            setPage((prev) => Math.max(1, prev - 1));
-            return;
-          }
-
-          setData(fallbackMembersData);
-          setHasNextPage(false);
-          setFamilies((settledValue(fallbackFamiliesResult) ?? []) as Family[]);
-          setChurches((settledValue(fallbackChurchesResult) ?? []) as Church[]);
-          setCells((settledValue(fallbackCellsResult) ?? []) as Cell[]);
-          setFederations((settledValue(fallbackFederationsResult) ?? []) as Federation[]);
-          setMinisters((settledValue(fallbackMinistersResult) ?? []) as Minister[]);
-          setServerPaginationEnabled(false);
-          setPage(1);
-          return;
-        }
-
-        throw membersResult.reason;
-      }
-
-      const membersData = Array.isArray(membersResult.value) ? (membersResult.value as Member[]) : [];
-
-      if (serverPaginationEnabled && !hasActiveFilters && page > 1 && membersData.length === 0) {
-        setPage((prev) => Math.max(1, prev - 1));
+      const members = Array.isArray(result) ? result : [];
+      if (page > 1 && members.length === 0) {
+        setPage((currentPage) => Math.max(1, currentPage - 1));
         return;
       }
 
-      setData(membersData);
-      setHasNextPage(!hasActiveFilters && serverPaginationEnabled && membersData.length === pageSize);
-      setFamilies((settledValue(familiesResult) ?? []) as Family[]);
-      setChurches((settledValue(churchesResult) ?? []) as Church[]);
-      setCells((settledValue(cellsResult) ?? []) as Cell[]);
-      setFederations((settledValue(federationsResult) ?? []) as Federation[]);
-      setMinisters((settledValue(ministersResult) ?? []) as Minister[]);
+      setData(members);
+      setHasNextPage(members.length === pageSize);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao carregar membros');
+      if (requestId === latestMembersRequestRef.current) {
+        setError(err instanceof Error ? err.message : 'Erro ao carregar membros');
+      }
     } finally {
-      setIsLoading(false);
+      if (requestId === latestMembersRequestRef.current) {
+        setIsLoading(false);
+      }
     }
-  };
+  }, [fetchApi, membersEndpoint, page, pageSize]);
+
+  const loadReferenceData = useCallback(async () => {
+    const requestList = [
+      fetchApi<Family[]>('/api/families?pageNumber=1&pageQuantity=100'),
+      isLocalScope && typeof user?.churchId === 'number'
+        ? fetchApi<Church>(`/api/churches/${user.churchId}`).then((church) => [church]).catch(() => buildLocalChurchFallback(user.churchId))
+        : fetchApi<Church[]>('/api/churches'),
+      isLocalScope ? Promise.resolve<Federation[]>([]) : fetchApi<Federation[]>('/api/federations'),
+      isLocalScope ? Promise.resolve<Minister[]>([]) : fetchApi<Minister[]>('/api/ministers?pageNumber=1&pageQuantity=200'),
+    ];
+
+    const [familiesResult, churchesResult, federationsResult, ministersResult] = await Promise.allSettled(requestList);
+
+    setFamilies((settledValue(familiesResult) ?? []) as Family[]);
+    setChurches((settledValue(churchesResult) ?? []) as Church[]);
+    setFederations((settledValue(federationsResult) ?? []) as Federation[]);
+    setMinisters((settledValue(ministersResult) ?? []) as Minister[]);
+  }, [fetchApi, isLocalScope, user?.churchId]);
 
   useEffect(() => {
-    setPage(1);
-    load();
-  }, [hasActiveFilters]);
+    void loadReferenceData();
+  }, [loadReferenceData]);
 
   useEffect(() => {
-    load();
-  }, [page, pageSize, serverPaginationEnabled]);
-
-  useEffect(() => {
-    if (debounceTimerRef.current) {
-      clearTimeout(debounceTimerRef.current);
-    }
-
-    console.log('[Members Search Debug] Search effect triggered with searchTerm:', searchTerm);
-
-    debounceTimerRef.current = setTimeout(() => {
-      console.log('[Members Search Debug] Debounce completed, calling load() with searchTerm:', searchTerm);
-      setPage(1);
-      load();
-    }, 500);
+    void loadMembers();
 
     return () => {
-      if (debounceTimerRef.current) {
-        clearTimeout(debounceTimerRef.current);
-      }
+      latestMembersRequestRef.current += 1;
     };
+  }, [loadMembers]);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      setPage(1);
+      setDebouncedSearchTerm(searchTerm.trim());
+    }, 500);
+
+    return () => window.clearTimeout(timeoutId);
   }, [searchTerm]);
 
   const openAdd = () => {
@@ -382,14 +325,6 @@ export default function Membros() {
     if (saving) return;
 
     if (!form.name.trim()) { toast.error('Nome é obrigatório'); return; }
-
-    // Validação de permissão de família removida pois o SmartSelect com fetchItems
-    // já filtra as famílias por escopo. A validação era muito restritiva pois
-    // scopedFamilies só contém as famílias carregadas na requisição inicial.
-    // if (form.familyId && !scopedFamilies.some((family) => family.id === form.familyId)) {
-    //   toast.error('Você não tem permissão para vincular este membro a essa família.');
-    //   return;
-    // }
 
     const normalizedCellPhone = normalizePhoneNumber(form.phoneCountryCode, form.phoneNumber);
     const phoneValidationError = normalizedCellPhone
@@ -464,7 +399,7 @@ export default function Membros() {
       }
 
       setShowModal(false);
-      load();
+      void loadMembers();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao salvar');
     } finally {
@@ -483,7 +418,7 @@ export default function Membros() {
       });
       toast.success('Status de segurado atualizado com sucesso');
       setShowMinisterEditModal(false);
-      load();
+      void loadMembers();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Erro ao atualizar status de segurado');
     } finally {
@@ -498,7 +433,7 @@ export default function Membros() {
 
   const handleDelete = async (item: Member) => {
     await fetchApi(`/api/members/${item.id}`, { method: 'DELETE' });
-    load();
+    await loadMembers();
   };
 
   const columns: Column<Member>[] = [
@@ -598,12 +533,6 @@ export default function Membros() {
     scopedChurchesRef.current = scopedChurches;
   }, [scopedChurches]);
 
-  const scopedFamilies = useMemo(() => {
-    const allowedChurchIds = new Set(scopedChurches.map((church) => church.id));
-    return families.filter((family) => allowedChurchIds.has(family.churchId));
-  }, [families, scopedChurches]);
-
-  // Lazy load function for SmartSelect
   const fetchFamilies = async (page: number, query: string): Promise<SmartSelectOption[]> => {
     const params = new URLSearchParams();
     params.append('pageNumber', String(page));
@@ -637,46 +566,17 @@ export default function Membros() {
     }
   };
 
-  const scopedCells = useMemo(() => {
-    const allowedChurchIds = new Set(scopedChurches.map((church) => church.id));
-    return cells.filter((cell) => allowedChurchIds.has(cell.churchId));
-  }, [cells, scopedChurches]);
-
   useEffect(() => {
     if (isFederatedScope && typeof restrictions.lockedFederationId === 'number') {
-      setSelectedFederationIds([restrictions.lockedFederationId]);
+      setSelectedFederationId(restrictions.lockedFederationId);
+      setPage(1);
     }
 
     if (isLocalScope && typeof restrictions.lockedChurchId === 'number') {
-      setSelectedChurchIds([restrictions.lockedChurchId]);
+      setSelectedChurchId(restrictions.lockedChurchId);
+      setPage(1);
     }
   }, [isFederatedScope, isLocalScope, restrictions.lockedChurchId, restrictions.lockedFederationId]);
-
-  const filteredData = useMemo(() => {
-    if (hasActiveFilters) {
-      return data;
-    }
-
-    return data.filter((member) => {
-      const family = scopedFamilies.find((familyItem) => familyItem.id === member.familyId);
-      if (!family) return false;
-
-      const churchId = family?.churchId;
-      const cellId = family?.cellId;
-      const federationId = scopedChurches.find((church) => church.id === churchId)?.federationId;
-
-      const federationMatch = selectedFederationIds.length === 0 ||
-        (typeof federationId === 'number' && selectedFederationIds.includes(federationId));
-
-      const churchMatch = selectedChurchIds.length === 0 ||
-        (typeof churchId === 'number' && selectedChurchIds.includes(churchId));
-
-      const cellMatch = selectedCellIds.length === 0 ||
-        (typeof cellId === 'number' && selectedCellIds.includes(cellId));
-
-      return federationMatch && churchMatch && cellMatch;
-    });
-  }, [data, hasActiveFilters, scopedChurches, scopedFamilies, selectedCellIds, selectedChurchIds, selectedFederationIds]);
 
   const handlePageSizeChange = (size: number) => {
     const safeSize = Math.min(100, Math.max(1, size));
@@ -685,44 +585,60 @@ export default function Membros() {
   };
 
   const handleSearch = (value: string) => {
-    console.log('[Members Search Debug] handleSearch called with value:', value);
     setSearchTerm(value);
-    console.log('[Members Search Debug] searchTerm state updated');
+  };
+
+  const handleFederationFilterChange = (ids: number[]) => {
+    setSelectedFederationId(getLastSelectedId(ids));
+    setPage(1);
+  };
+
+  const handleChurchFilterChange = (ids: number[]) => {
+    setSelectedChurchId(getLastSelectedId(ids));
+    setPage(1);
+  };
+
+  const handleCellFilterChange = (ids: number[]) => {
+    setSelectedCellId(getLastSelectedId(ids));
+    setPage(1);
   };
 
   const topFilters = (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
       {!isLocalScope && !isFederatedScope && (
         <MultiSelect
-          label="Filtro por Federações"
-          selectedIds={selectedFederationIds}
-          onChange={setSelectedFederationIds}
+          label="Filtro por Federação"
+          selectedIds={typeof selectedFederationId === 'number' ? [selectedFederationId] : []}
+          onChange={handleFederationFilterChange}
+          maxSelections={1}
           placeholder="Todas as federações"
           fetchItems={async (page, query) => {
-            const result = await fetchApi<Federation[]>(`/api/federations?pageNumber=${page}&pageQuantity=10&name=${encodeURIComponent(query)}`);
+            const result = await fetchApi<Federation[]>(`/api/federations?pageNumber=${page}&pageQuantity=10&search=${encodeURIComponent(query.trim())}`);
             return Array.isArray(result) ? result.map(f => ({ id: f.id, name: `${f.id} - ${f.name}` })) : [];
           }}
         />
       )}
       {!isLocalScope && (
         <MultiSelect
-          label="Filtro por Igrejas"
-          selectedIds={selectedChurchIds}
-          onChange={setSelectedChurchIds}
+          label="Filtro por Igreja"
+          selectedIds={typeof selectedChurchId === 'number' ? [selectedChurchId] : []}
+          onChange={handleChurchFilterChange}
+          maxSelections={1}
           placeholder="Todas as igrejas"
           fetchItems={async (page, query) => {
-            const result = await fetchApi<Church[]>(`/api/churches?pageNumber=${page}&pageQuantity=10&name=${encodeURIComponent(query)}`);
+            const result = await fetchApi<Church[]>(`/api/churches?pageNumber=${page}&pageQuantity=10&querySearch=${encodeURIComponent(query.trim())}`);
             return Array.isArray(result) ? result.map(c => ({ id: c.id, name: `${c.id} - ${c.name}` })) : [];
           }}
         />
       )}
       <MultiSelect
-        label="Filtro por Células"
-        selectedIds={selectedCellIds}
-        onChange={setSelectedCellIds}
+        label="Filtro por Célula"
+        selectedIds={typeof selectedCellId === 'number' ? [selectedCellId] : []}
+        onChange={handleCellFilterChange}
+        maxSelections={1}
         placeholder="Todas as células"
         fetchItems={async (page, query) => {
-          const result = await fetchApi<Cell[]>(`/api/cells?pageNumber=${page}&pageQuantity=10&name=${encodeURIComponent(query)}`);
+          const result = await fetchApi<Cell[]>(`/api/cells?pageNumber=${page}&pageQuantity=10&querySearch=${encodeURIComponent(query.trim())}`);
           return Array.isArray(result) ? result.map(c => ({ id: c.id, name: `${c.id} - ${c.name}` })) : [];
         }}
       />
@@ -734,19 +650,15 @@ export default function Membros() {
       <CRUDTable
         title="Membros"
         topContent={topFilters}
-        data={filteredData}
-        pagination={!serverPaginationEnabled || hasActiveFilters}
-        pageSize={pageSize}
-        onPageSizeChange={handlePageSizeChange}
-        pageSizeOptions={[10, 25, 50, 100]}
-        serverPagination={!hasActiveFilters && serverPaginationEnabled ? {
+        data={data}
+        serverPagination={{
           currentPage: page,
           pageSize,
           hasNextPage,
           onPageChange: setPage,
           onPageSizeChange: handlePageSizeChange,
           pageSizeOptions: [10, 25, 50, 100],
-        } : undefined}
+        }}
         columns={columns}
         isLoading={isLoading}
         error={error}
@@ -755,7 +667,7 @@ export default function Membros() {
         onAdd={openAdd}
         onEdit={openEdit}
         onDelete={handleDelete}
-        onRefresh={load}
+        onRefresh={loadMembers}
         searchPlaceholder="Buscar membro..."
         onSearch={handleSearch}
         emptyMessage="Nenhum membro encontrado"
