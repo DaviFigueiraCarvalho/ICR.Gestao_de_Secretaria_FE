@@ -175,10 +175,52 @@ export default function Usuarios() {
     }
 
     const results = await fetchApi<Member[]>(`/api/members?${params.toString()}`);
-    return (Array.isArray(results) ? results : []).map((member) => ({
+    const memberResults = Array.isArray(results) ? results : [];
+    setMembers((previousMembers) => {
+      const membersById = new Map(previousMembers.map((member) => [member.id, member]));
+      memberResults.forEach((member) => membersById.set(member.id, member));
+      return Array.from(membersById.values());
+    });
+
+    return memberResults.map((member) => ({
       id: member.id,
       name: member.name,
     }));
+  };
+
+  const copyCredentials = async (username: string, password: string, memberId: number | '') => {
+    let member = members.find((item) => item.id === memberId);
+
+    if (!member && memberId) {
+      try {
+        member = await fetchApi<Member>(`/api/members/${memberId}`);
+        setMembers((previousMembers) => [
+          ...previousMembers.filter((item) => item.id !== member!.id),
+          member!,
+        ]);
+      } catch {
+        // As credenciais continuam úteis mesmo se os dados do membro não puderem ser carregados.
+      }
+    }
+
+    const recipientName = member?.name || 'Secretário(a)';
+    const churchName = member?.familyChurchName || 'sua igreja';
+    const credentials = `${recipientName} de ${churchName}
+
+seu login de acesso ao programa de Sistema de Gestão de Secretaria é
+Usuário:
+${username}
+Senha:
+${password}
+
+acesse em: https://app.icravivalista.com.br/login`;
+
+    if (!navigator.clipboard?.writeText) {
+      throw new Error('A cópia automática não está disponível neste navegador');
+    }
+
+    await navigator.clipboard.writeText(credentials);
+    toast.success('Credenciais copiadas para a área de transferência');
   };
 
   const loadLookups = async () => {
@@ -278,6 +320,14 @@ export default function Usuarios() {
           }),
         });
         toast.success('Usuário criado com sucesso');
+      }
+
+      if (form.password.trim()) {
+        try {
+          await copyCredentials(form.username, form.password, form.memberId);
+        } catch (clipboardError) {
+          toast.error(clipboardError instanceof Error ? clipboardError.message : 'Não foi possível copiar as credenciais');
+        }
       }
 
       setShowModal(false);
@@ -558,7 +608,12 @@ export default function Usuarios() {
                 <SmartSelect
                   label="Membro Vinculado"
                   selectedId={form.memberId}
-                  selectedItem={members.find(m => m.id === form.memberId) ? { id: members.find(m => m.id === form.memberId)!.id, name: members.find(m => m.id === form.memberId)!.name } : null}
+                  selectedItem={(() => {
+                    const selectedMember = members.find((member) => member.id === form.memberId);
+                    return selectedMember
+                      ? { id: selectedMember.id, name: selectedMember.name }
+                      : null;
+                  })()}
                   onSelect={(id) => setForm((prev) => ({ ...prev, memberId: id === '' ? '' : Number(id) }))}
                   placeholder="Selecione um membro"
                   fetchItems={fetchMemberItems}

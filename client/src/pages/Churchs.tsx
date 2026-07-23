@@ -3,13 +3,13 @@ import ICRLayout from '../components/ICRLayout';
 import CRUDTable, { Column } from '../components/CRUDTable';
 import SmartSelect from '../components/SmartSelect';
 import MultiSelect from '../components/MultiSelect';
+import AddressFormFields from '../components/AddressFormFields';
 import { useICRAuth } from '../contexts/ICRAuthContext';
 import { getScopeLevel } from '../lib/scope-access';
 import { useICRApi, Church, Federation, Minister } from '../hooks/useICRApi';
 import { settledValue } from '@/lib/utils';
 import { buildPaginatedListEndpoint } from '../lib/paginated-list-query';
-import { useViaCEP } from '../hooks/useViaCEP';
-import { countrySelectItems, DEFAULT_COUNTRY_CODE, formatPostalCode, normalizePostalCode } from '../lib/country';
+import { DEFAULT_COUNTRY_CODE, normalizePostalCode } from '../lib/country';
 import { toast } from 'sonner';
 
 interface IgrejaForm {
@@ -29,7 +29,6 @@ interface IgrejaForm {
 export default function Igrejas() {
   const { fetchApi } = useICRApi();
   const { user } = useICRAuth();
-  const { fetchCEP, loading: cepLoading, error: cepError } = useViaCEP();
   const scopeLevel = getScopeLevel(user?.scope, user?.username);
   const isFederatedScope = scopeLevel === 'federated';
   const isLocalScope = scopeLevel === 'local';
@@ -137,27 +136,6 @@ export default function Igrejas() {
     void loadReferenceData();
   }, [fetchApi, isLocalScope]);
 
-  const handlePostalCodeChange = async (value: string) => {
-    const normalizedPostalCode = normalizePostalCode(form.countryCode, value);
-    setForm(prev => ({ ...prev, postalCode: normalizedPostalCode }));
-    
-    if (form.countryCode !== 'BR') return;
-
-    const cleanCEP = normalizedPostalCode;
-    if (cleanCEP.length === 8) {
-      const cepData = await fetchCEP(value);
-      if (cepData) {
-        setForm(prev => ({
-          ...prev,
-          street: cepData.street,
-          city: cepData.city,
-          state: cepData.state,
-        }));
-        toast.success('Endereço preenchido automaticamente');
-      }
-    }
-  };
-
   const openAdd = () => {
     setEditItem(null);
     setForm({ name: '', federationId: '', ministerId: '', countryCode: DEFAULT_COUNTRY_CODE, postalCode: '', street: '', number: '', complement: '', city: '', state: '', countyOrRegion: '' });
@@ -194,38 +172,53 @@ const handleSave = async () => {
     toast.error('O CEP deve conter exatamente 8 números');
     return;
   }
+  if (!normalizedPostalCode || !form.street || !form.number || !form.city || !form.state) {
+    toast.error('Preencha CEP, número, rua, cidade e estado da igreja.');
+    return;
+  }
 
   setSaving(true);
   try {
-    // 3. Montagem do body seguindo exatamente o ChurchPatchDTO
+    const address = {
+      countryCode: form.countryCode,
+      postalCode: normalizedPostalCode,
+      street: form.street,
+      number: form.number,
+      complement: form.complement,
+      city: form.city,
+      state: form.state,
+      countyOrRegion: form.countyOrRegion,
+    };
+
+    // Criação requer o endereço completo. Na edição, enviamos o endereço apenas
+    // quando ele foi alterado, evitando recriar o value object ao trocar só a área.
     const body = {
       name: form.name,
       federationId: Number(form.federationId),
       ministerId: form.ministerId ? Number(form.ministerId) : 0,
-      address: {
-        countryCode: form.countryCode,
-        postalCode: normalizedPostalCode,
-        street: form.street,
-        number: form.number,
-        complement: form.complement,
-        city: form.city,
-        state: form.state,
-        countyOrRegion: form.countyOrRegion,
-      }
-    }; 
+    };
 
     if (editItem) {
-    await fetchApi(`/api/churches/${editItem.id}`, {
-  method: "PATCH",
-  headers: {
-    "Content-Type": "application/json"
-  },
-  body: JSON.stringify(body)
-});      toast.success('Igreja atualizada com sucesso');
+      const previousAddress = editItem.address;
+      const addressChanged =
+        address.countryCode !== (previousAddress?.countryCode || DEFAULT_COUNTRY_CODE) ||
+        address.postalCode !== normalizePostalCode(address.countryCode, previousAddress?.postalCode || '') ||
+        address.street !== (previousAddress?.street || '') ||
+        address.number !== (previousAddress?.number || '') ||
+        address.complement !== (previousAddress?.complement || '') ||
+        address.city !== (previousAddress?.city || '') ||
+        address.state !== (previousAddress?.state || '') ||
+        address.countyOrRegion !== (previousAddress?.countyOrRegion || '');
+
+      await fetchApi(`/api/churches/${editItem.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ ...body, ...(addressChanged ? { address } : {}) }),
+      });
+      toast.success('Igreja atualizada com sucesso');
     } else {
-      await fetchApi('/api/churches', { 
-        method: 'POST', 
-        body: JSON.stringify(body) 
+      await fetchApi('/api/churches', {
+        method: 'POST',
+        body: JSON.stringify({ ...body, address })
       });
       toast.success('Igreja criada com sucesso');
     }
@@ -359,26 +352,6 @@ const handleSave = async () => {
                     placeholder="Nome da igreja" />
                 </div>
                 <SmartSelect
-                  className="col-span-2"
-                  label="País"
-                  selectedId={form.countryCode}
-                  selectedItem={countrySelectItems.find(c => c.id === form.countryCode) || null}
-                  onSelect={(id) => {
-                    const countryCode = typeof id === 'string' ? id : DEFAULT_COUNTRY_CODE;
-                    setForm((prev) => ({ ...prev, countryCode, postalCode: '' }));
-                  }}
-                  fetchItems={async (page, query) => {
-                    const filtered = countrySelectItems.filter(c => 
-                      c.name.toLowerCase().includes(query.toLowerCase())
-                    );
-                    const start = (page - 1) * 10;
-                    const end = start + 10;
-                    return filtered.slice(start, end);
-                  }}
-                  placeholder="Selecione um país"
-                  required
-                />
-                <SmartSelect
                   label="Area"
                   selectedId={form.federationId}
                   selectedItem={federations.find(f => f.id === form.federationId) ? { id: federations.find(f => f.id === form.federationId)!.id, name: federations.find(f => f.id === form.federationId)!.name } : null}
@@ -407,7 +380,7 @@ const handleSave = async () => {
                     const params = new URLSearchParams();
                     params.append('pageNumber', String(page));
                     params.append('pageQuantity', '10');
-                    if (query) params.append('query', query);
+                    if (query) params.append('querySearch', query);
                     const result = await fetchApi<Minister[]>(`/api/ministers?${params}`);
                     return Array.isArray(result) ? result.map(m => ({ id: m.id, name: m.memberName || m.id.toString() })) : [];
                   }}
@@ -417,56 +390,22 @@ const handleSave = async () => {
 
               <div className="border-t border-white/10 pt-4">
                 <p className="text-white/50 text-xs font-['Nunito'] mb-3 uppercase tracking-wider">Endereço</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-white/70 text-sm font-['Nunito'] block mb-1">{form.countryCode === 'BR' ? 'CEP' : 'Código postal'} {form.countryCode === 'BR' && cepLoading && <span className="text-[#017158] text-xs">buscando...</span>}</label>
-                    <input 
-                      type="text" 
-                      value={formatPostalCode(form.countryCode, form.postalCode)} 
-                      onChange={e => handlePostalCodeChange(e.target.value)}
-                      disabled={form.countryCode === 'BR' && cepLoading}
-                      className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                      placeholder={form.countryCode === 'BR' ? '00000-000' : 'Informe o código postal'} 
-                    />
-                    {form.countryCode === 'BR' && cepError && <p className="text-red-400 text-xs mt-1">{cepError}</p>}
-                  </div>
-                  <div>
-                    <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Número</label>
-                    <input type="text" value={form.number} onChange={e => setF('number', e.target.value)}
-                      className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                      placeholder="Nº" />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Rua</label>
-                    <input type="text" value={form.street} onChange={e => setF('street', e.target.value)}
-                      className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                      placeholder="Nome da rua" />
-                  </div>
-                  <div className="col-span-2">
-                    <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Complemento</label>
-                    <input type="text" value={form.complement} onChange={e => setF('complement', e.target.value)}
-                      className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                      placeholder="Apto, bloco, referência" />
-                  </div>
-                  <div>
-                    <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Cidade</label>
-                    <input type="text" value={form.city} onChange={e => setF('city', e.target.value)}
-                      className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                      placeholder="Cidade" />
-                  </div>
-                  <div>
-                    <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Estado</label>
-                    <input type="text" value={form.state} onChange={e => setF('state', e.target.value)}
-                      className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                      placeholder="UF" maxLength={2} />
-                  </div>
-                  <div>
-                    <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Região/Condado</label>
-                    <input type="text" value={form.countyOrRegion} onChange={e => setF('countyOrRegion', e.target.value)}
-                      className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                      placeholder="Condado, província, região" />
-                  </div>
-                </div>
+                <AddressFormFields
+                  value={{
+                    countryCode: form.countryCode,
+                    postalCode: form.postalCode,
+                    street: form.street,
+                    number: form.number,
+                    complement: form.complement,
+                    city: form.city,
+                    state: form.state,
+                    countyOrRegion: form.countyOrRegion,
+                  }}
+                  onChange={(address) => {
+                    setForm((previous) => ({ ...previous, ...address }));
+                  }}
+                  required
+                />
               </div>
             </div>
 

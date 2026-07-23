@@ -67,7 +67,8 @@ export default function Federacoes() {
     try {
       const body = {
         name: form.name,
-        ...(form.ministerId ? { ministerId: Number(form.ministerId) } : {}),
+        // A API interpreta 0 como remoção do ministro vinculado.
+        ministerId: form.ministerId ? Number(form.ministerId) : 0,
       };
       if (editItem) {
         await fetchApi(`/api/federations/${editItem.id}`, {
@@ -146,7 +147,16 @@ export default function Federacoes() {
                            <SmartSelect
                                label="Ministro"
                                selectedId={form.ministerId}
-                                selectedItem={ministers.find(m => m.id === form.ministerId) ? { id: ministers.find(m => m.id === form.ministerId)!.id, name: ministers.find(m => m.id === form.ministerId)!.memberName || ministers.find(m => m.id === form.ministerId)!.id.toString() } : null}
+                               selectedItem={(() => {
+                                   const selectedMinister = ministers.find((minister) => minister.id === form.ministerId);
+                                   if (selectedMinister) {
+                                       return { id: selectedMinister.id, name: selectedMinister.memberName || selectedMinister.id.toString() };
+                                   }
+
+                                   return editItem?.ministerId === form.ministerId && editItem.ministerName
+                                       ? { id: editItem.ministerId, name: editItem.ministerName }
+                                       : null;
+                               })()}
                                onSelect={(id) =>
                                    setForm({
                                        ...form,
@@ -158,9 +168,15 @@ export default function Federacoes() {
                                    const params = new URLSearchParams();
                                    params.append('pageNumber', String(page));
                                    params.append('pageQuantity', '10');
-                                   if (query) params.append('query', query);
-                                    const result = await fetchApi<Minister[]>(`/api/ministers?${params}`);
-                                    return Array.isArray(result) ? result.map(m => ({ id: m.id, name: m.memberName || m.id.toString() })) : [];
+                                   if (query.trim()) params.append('querySearch', query.trim());
+                                   const result = await fetchApi<Minister[]>(`/api/ministers?${params}`);
+                                   const ministerResults = Array.isArray(result) ? result : [];
+                                   setMinisters((previousMinisters) => {
+                                       const ministersById = new Map(previousMinisters.map((minister) => [minister.id, minister]));
+                                       ministerResults.forEach((minister) => ministersById.set(minister.id, minister));
+                                       return Array.from(ministersById.values());
+                                   });
+                                   return ministerResults.map((minister) => ({ id: minister.id, name: minister.memberName || minister.id.toString() }));
                                }}
                            />
             </div>

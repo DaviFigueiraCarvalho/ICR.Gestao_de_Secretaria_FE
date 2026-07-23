@@ -41,6 +41,13 @@ interface ReferenceResponse {
   resultMessage?: string;
 }
 
+interface RepassSummary {
+  referenceId: number;
+  churchesUpToDate: number;
+  pendingChurches: number;
+  totalRepassed: number;
+}
+
 const MONTH_NAMES = [
   'janeiro',
   'fevereiro',
@@ -165,6 +172,7 @@ export default function Repasses() {
   const [references, setReferences] = useState<Reference[]>([]);
   const [churches, setChurches] = useState<Church[]>([]);
   const [repasses, setRepasses] = useState<Repass[]>([]);
+  const [summary, setSummary] = useState<RepassSummary | null>(null);
   const [selectedRef, setSelectedRef] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -211,10 +219,17 @@ export default function Repasses() {
 
   const loadRepasses = async (refId: number) => {
     try {
-      const result = await fetchApi<Repass[]>(`/api/repasses/reference/${refId}`);
+      const [repassesResult, summaryResult] = await Promise.all([
+        fetchApi<Repass[]>(`/api/repasses/reference/${refId}`),
+        fetchApi<RepassSummary>(`/api/repasses/reference/${refId}/summary`),
+      ]);
+
+      const result = repassesResult;
       setRepasses(Array.isArray(result) ? result : []);
+      setSummary(summaryResult);
     } catch (err) {
       setRepasses([]);
+      setSummary(null);
     }
   };
 
@@ -273,10 +288,9 @@ export default function Repasses() {
       });
   }, [churches, repasses, search]);
 
-  // Summary
-  const totalPaid = rows.filter(r => r.amount && r.amount > 0).reduce((sum, r) => sum + (r.amount || 0), 0);
-  const paidCount = rows.filter(r => r.amount && r.amount > 0).length;
-  const pendingCount = rows.filter(r => !r.amount || r.amount === 0).length;
+  const totalPaid = summary?.totalRepassed ?? 0;
+  const paidCount = summary?.churchesUpToDate ?? 0;
+  const pendingCount = summary?.pendingChurches ?? 0;
 
  const getRowColor = (row: RepassRow): string => {
     const val = row.amount || 0;

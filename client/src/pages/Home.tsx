@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import ICRLayout from '../components/ICRLayout';
 import DashboardSummaryCard from '../components/DashboardSummaryCard';
+import SmartSelect, { SmartSelectOption } from '../components/SmartSelect';
 import PermissionDeniedError from '../components/PermissionDeniedError';
 import { Badge } from '@/components/ui/badge';
 import { useTheme } from '../contexts/ThemeContext';
@@ -61,8 +62,8 @@ export default function Home() {
     if (scopeLevel === 'local') return;
 
     if (selectedScopeType === 'church') {
-      if (typeof selectedChurchId !== 'number' && churchOptions[0]?.id) {
-        setSelectedChurchId(churchOptions[0].id);
+      if (typeof selectedChurchId !== 'number') {
+        setSelectedChurchId(userChurchId ?? churchOptions[0]?.id);
       }
       return;
     }
@@ -82,6 +83,7 @@ export default function Home() {
     selectedScopeType,
     setSelectedChurchId,
     setSelectedFederationId,
+    userChurchId,
     userFederationId,
   ]);
 
@@ -97,8 +99,8 @@ export default function Home() {
 
     if (nextScopeType === 'church') {
       setSelectedFederationId(undefined);
-      // For local users, use userChurchId directly instead of churchOptions
-      if (scopeLevel === 'local' && typeof userChurchId === 'number') {
+      // Sempre prioriza a igreja vinculada ao usuário autenticado.
+      if (typeof userChurchId === 'number') {
         setSelectedChurchId(userChurchId);
       } else {
         setSelectedChurchId(churchOptions[0]?.id);
@@ -224,6 +226,22 @@ export default function Home() {
   const contextFilterValue = selectedScopeType === 'church'
     ? (selectedChurchId?.toString() ?? churchOptions[0]?.id?.toString() ?? '')
     : (selectedFederationId?.toString() ?? userFederationId?.toString() ?? federationOptions[0]?.id?.toString() ?? '');
+  const selectedScopeOption = scopeOptions.find((option) => option.value === selectedScopeType) || null;
+  const selectedContextOption = contextFilterOptions.find((option) => String(option.id) === contextFilterValue) || null;
+
+  const fetchSelectOptions = (
+    options: SmartSelectOption[],
+    page: number,
+    query: string,
+    searchable: boolean,
+  ) => {
+    const normalizedQuery = searchable ? query.trim().toLocaleLowerCase('pt-BR') : '';
+    const filteredOptions = normalizedQuery
+      ? options.filter((option) => option.name.toLocaleLowerCase('pt-BR').includes(normalizedQuery))
+      : options;
+    const pageSize = 10;
+    return Promise.resolve(filteredOptions.slice((page - 1) * pageSize, page * pageSize));
+  };
 
   return (
     <ICRLayout>
@@ -255,46 +273,36 @@ export default function Home() {
 
             <div className={`grid gap-3 ${selectedScopeType === 'national' ? 'lg:grid-cols-1' : 'lg:grid-cols-2'}`}>
               <div>
-                <label className={`${isLight ? 'text-[#35695d]' : 'text-white/70'} text-sm font-['Nunito'] block mb-1`}>
-                  Visão
-                </label>
-                <select
-                  value={selectedScopeType}
-                  onChange={(event) => handleScopeTypeChange(event.target.value)}
-                  className={`w-full rounded-lg border px-4 py-2.5 text-sm font-['Nunito'] outline-none transition-colors ${
-                    isLight
-                      ? 'bg-white border-[#cfe4dc] text-[#123b33] focus:border-[#017158]'
-                      : 'bg-[#1c1c1c] border-white/20 text-white focus:border-[#017158]'
-                  }`}
-                >
-                  {scopeOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                <SmartSelect
+                  label="Visão"
+                  selectedId={selectedScopeType}
+                  selectedItem={selectedScopeOption ? { id: selectedScopeOption.value, name: selectedScopeOption.label } : null}
+                  onSelect={(id) => handleScopeTypeChange(String(id))}
+                  fetchItems={(page, query) => fetchSelectOptions(
+                    scopeOptions.map((option) => ({ id: option.value, name: option.label })),
+                    page,
+                    query,
+                    false,
+                  )}
+                  searchable={false}
+                />
               </div>
 
               {selectedScopeType !== 'national' && (
                 <div>
-                  <label className={`${isLight ? 'text-[#35695d]' : 'text-white/70'} text-sm font-['Nunito'] block mb-1`}>
-                    {contextFilterLabel}
-                  </label>
-                  <select
-                    value={contextFilterValue}
-                    onChange={(event) => handleContextFilterChange(event.target.value)}
-                    className={`w-full rounded-lg border px-4 py-2.5 text-sm font-['Nunito'] outline-none transition-colors ${
-                      isLight
-                        ? 'bg-white border-[#cfe4dc] text-[#123b33] focus:border-[#017158]'
-                        : 'bg-[#1c1c1c] border-white/20 text-white focus:border-[#017158]'
-                    }`}
-                  >
-                    {contextFilterOptions.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.name}
-                      </option>
-                    ))}
-                  </select>
+                  <SmartSelect
+                    label={contextFilterLabel}
+                    selectedId={contextFilterValue}
+                    selectedItem={selectedContextOption ? { id: selectedContextOption.id, name: selectedContextOption.name } : null}
+                    onSelect={(id) => handleContextFilterChange(String(id))}
+                    fetchItems={(page, query) => fetchSelectOptions(
+                      contextFilterOptions.map((option) => ({ id: option.id, name: option.name })),
+                      page,
+                      query,
+                      selectedScopeType === 'church',
+                    )}
+                    searchable={selectedScopeType === 'church'}
+                  />
                 </div>
               )}
             </div>

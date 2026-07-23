@@ -3,6 +3,7 @@ import ICRLayout from '../components/ICRLayout';
 import CRUDTable, { Column } from '../components/CRUDTable';
 import SmartSelect from '../components/SmartSelect';
 import MultiSelect from '../components/MultiSelect';
+import AddressFormFields, { AddressFormValue } from '../components/AddressFormFields';
 import { useICRAuth } from '../contexts/ICRAuthContext';
 import { buildLocalChurchFallback, getScopeLevel, resolveScopeRestrictions } from '../lib/scope-access';
 import { useICRApi, Family, Church, Cell, Federation, Member, Minister } from '../hooks/useICRApi';
@@ -11,7 +12,6 @@ import { settledValue } from '@/lib/utils';
 import { buildPaginatedListEndpoint } from '../lib/paginated-list-query';
 import { handleDatePaste, formatDateOnly, parseDateOnly } from '../lib/date-utils';
 import { DateInputWithPaste } from '../components/ui/DateInputWithPaste';
-import { useViaCEP } from '../hooks/useViaCEP';
 import {
   GENDER_FEMALE,
   GENDER_MALE,
@@ -41,6 +41,7 @@ interface FamilyMemberDraft {
 }
 
 interface MinistroInlineForm {
+  countryCode: string;
   cpf: string;
   email: string;
   cardValidity: string;
@@ -51,10 +52,15 @@ interface MinistroInlineForm {
   number: string;
   city: string;
   state: string;
+  complement: string;
+  countyOrRegion: string;
   isInsured: boolean;
 }
 
+const RECEITA_CPF_URL = 'https://servicos.receita.fazenda.gov.br/servicos/cpf/consultasituacao/ConsultaPublica.asp';
+
 const EMPTY_MINISTER_FORM: MinistroInlineForm = {
+  countryCode: 'BR',
   cpf: '',
   email: '',
   cardValidity: '',
@@ -65,8 +71,21 @@ const EMPTY_MINISTER_FORM: MinistroInlineForm = {
   number: '',
   city: '',
   state: '',
+  complement: '',
+  countyOrRegion: '',
   isInsured: false,
 };
+
+const getMinisterAddressValue = (ministerForm: MinistroInlineForm): AddressFormValue => ({
+  countryCode: ministerForm.countryCode,
+  postalCode: ministerForm.zipCode,
+  street: ministerForm.street,
+  number: ministerForm.number,
+  complement: ministerForm.complement,
+  city: ministerForm.city,
+  state: ministerForm.state,
+  countyOrRegion: ministerForm.countyOrRegion,
+});
 
 const createEmptyFamilyMemberDraft = (enabled = true): FamilyMemberDraft => ({
   enabled,
@@ -80,9 +99,9 @@ const createEmptyFamilyMemberDraft = (enabled = true): FamilyMemberDraft => ({
 export default function Familias() {
   const { fetchApi } = useICRApi();
   const { user } = useICRAuth();
-  const { fetchCEP } = useViaCEP();
   const scopeLevel = getScopeLevel(user?.scope, user?.username);
   const isLocalScope = scopeLevel === 'local';
+  const isFederationScope = scopeLevel === 'federation';
   const todayDate = new Date().toISOString().split('T')[0];
   const [data, setData] = useState<Family[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -119,23 +138,23 @@ export default function Familias() {
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const latestFamiliesRequestRef = useRef(0);
   const shouldAutoCreateMinister = (role: number | '') => role === PASTOR_ROLE || role === PRESBITERO_ROLE;
+  const manRoleOptions = useMemo(
+    () => getMemberRoleOptionsForGender(GENDER_MALE).filter((option) => option.value !== 0),
+    [],
+  );
+  const womanRoleOptions = useMemo(
+    () => getMemberRoleOptionsForGender(GENDER_FEMALE).filter((option) => option.value !== 0),
+    [],
+  );
 
   const normalizePhone = (value: string): string => value.replace(/\D/g, '').slice(0, 11);
   const normalizeCPF = (value: string): string => value.replace(/\D/g, '').slice(0, 11);
-  const normalizeCEP = (value: string): string => value.replace(/\D/g, '').slice(0, 8);
-
   const formatCPF = (value: string): string => {
     const digits = normalizeCPF(value);
     if (digits.length <= 3) return digits;
     if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
     if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
     return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
-  };
-
-  const formatCEP = (value: string): string => {
-    const digits = normalizeCEP(value);
-    if (digits.length <= 5) return digits;
-    return `${digits.slice(0, 5)}-${digits.slice(5)}`;
   };
 
   const getPreferredCellIdForChurch = (churchId: number | ''): number | '' => {
@@ -151,22 +170,32 @@ export default function Familias() {
     return matrixCell?.id ?? churchCells[0].id;
   };
 
-  const handleManMinisterCEPChange = async (value: string) => {
-    const normalizedCEP = normalizeCEP(value);
-    setManMinisterForm((prev) => ({ ...prev, zipCode: normalizedCEP }));
+  const updateManMinisterAddress = (address: AddressFormValue) => {
+    setManMinisterForm((previous) => ({
+      ...previous,
+      countryCode: address.countryCode || DEFAULT_COUNTRY_CODE,
+      zipCode: address.postalCode || '',
+      street: address.street || '',
+      number: address.number || '',
+      complement: address.complement || '',
+      city: address.city || '',
+      state: address.state || '',
+      countyOrRegion: address.countyOrRegion || '',
+    }));
+  };
 
-    if (normalizedCEP.length === 8) {
-      const cepData = await fetchCEP(value);
-      if (cepData) {
-        setManMinisterForm((prev) => ({
-          ...prev,
-          street: cepData.street,
-          city: cepData.city,
-          state: cepData.state,
-        }));
-        toast.success('Endereco do ministro preenchido automaticamente');
-      }
-    }
+  const updateWomanMinisterAddress = (address: AddressFormValue) => {
+    setWomanMinisterForm((previous) => ({
+      ...previous,
+      countryCode: address.countryCode || DEFAULT_COUNTRY_CODE,
+      zipCode: address.postalCode || '',
+      street: address.street || '',
+      number: address.number || '',
+      complement: address.complement || '',
+      city: address.city || '',
+      state: address.state || '',
+      countyOrRegion: address.countyOrRegion || '',
+    }));
   };
 
   // Funções auxiliares para colar datas de forma segura - cada handler é independente
@@ -207,21 +236,36 @@ export default function Familias() {
   const saveMinisterForMember = async (memberId: number, ministerFormData: MinistroInlineForm) => {
     const hasAddress = ministerFormData.zipCode || ministerFormData.street || ministerFormData.number || ministerFormData.city || ministerFormData.state;
 
+    if (ministerFormData.cpf.length !== 11) {
+      throw new Error('Informe um CPF válido para o ministro.');
+    }
+    if (!ministerFormData.email.trim()) {
+      throw new Error('Informe o e-mail do ministro.');
+    }
+    if (!ministerFormData.cardValidity || !ministerFormData.presbiterOrdinationDate) {
+      throw new Error('Informe a validade da carteira e a data de ordenação a presbítero.');
+    }
+    if (hasAddress && (!ministerFormData.countryCode || !ministerFormData.zipCode || !ministerFormData.street || !ministerFormData.number || !ministerFormData.city || !ministerFormData.state)) {
+      throw new Error('Preencha todos os campos do endereço do ministro ou deixe-o em branco.');
+    }
+
     const ministerBody: Record<string, unknown> = {
       memberId,
-      cpf: ministerFormData.cpf || '',
-      email: ministerFormData.email || '',
-      cardValidity: ministerFormData.cardValidity || null,
-      presbiterOrdinationDate: ministerFormData.presbiterOrdinationDate || null,
+      cpf: ministerFormData.cpf,
+      email: ministerFormData.email.trim(),
+      cardValidity: ministerFormData.cardValidity,
+      presbiterOrdinationDate: ministerFormData.presbiterOrdinationDate,
       ministerOrdinationDate: ministerFormData.ministerOrdinationDate || null,
-      isInsured: ministerFormData.isInsured,
-      address: hasAddress ? {
+      ...(hasAddress ? { address: {
+        countryCode: ministerFormData.countryCode,
         postalCode: ministerFormData.zipCode || '',
         street: ministerFormData.street || '',
         number: ministerFormData.number || '',
         city: ministerFormData.city || '',
         state: ministerFormData.state || '',
-      } : null,
+        complement: ministerFormData.complement || null,
+        countyOrRegion: ministerFormData.countyOrRegion || null,
+      } } : {}),
     };
 
     console.log('🔵 [Family] Enviando ministro:', JSON.stringify(ministerBody, null, 2));
@@ -429,20 +473,10 @@ export default function Familias() {
     return churches.filter((church) => allowedChurchIds.has(church.id));
   }, [churches, restrictions.allowedChurchIds, scopeLevel]);
 
-  const scopedFamilies = useMemo(() => {
-    const allowedChurchIds = new Set(scopedChurches.map((church) => church.id));
-    return data.filter((family) => allowedChurchIds.has(family.churchId));
-  }, [data, scopedChurches]);
-
   const scopedCells = useMemo(() => {
     const allowedChurchIds = new Set(scopedChurches.map((church) => church.id));
     return cells.filter((cell) => allowedChurchIds.has(cell.churchId));
   }, [cells, scopedChurches]);
-
-  const scopedMembers = useMemo(() => {
-    const allowedFamilyIds = new Set(scopedFamilies.map((family) => family.id));
-    return members.filter((member) => member.familyId && allowedFamilyIds.has(member.familyId));
-  }, [members, scopedFamilies]);
 
   useEffect(() => {
     if (isLocalScope && typeof restrictions.lockedChurchId === 'number') {
@@ -641,7 +675,19 @@ export default function Familias() {
           throw memberErr;
         }
 
-        if (createdManId && shouldAutoCreateMinister(manDraft.role)) {
+        // Vincula os cônjuges antes do cadastro ministerial. Assim, um eventual
+        // erro de dados do ministro não deixa a família sem marido ou mulher.
+        if (createdManId || createdWomanId) {
+          await fetchApi(`/api/families/${familyId}`, {
+            method: 'PATCH',
+            body: JSON.stringify({
+              ...(createdManId ? { manId: createdManId } : {}),
+              ...(createdWomanId ? { womanId: createdWomanId } : {}),
+            }),
+          });
+        }
+
+        if (isFederationScope && createdManId && shouldAutoCreateMinister(manDraft.role)) {
           const ministerResult = await saveMinisterForMember(createdManId, manMinisterForm);
           if (ministerResult === 'created') {
             toast.success('Cadastro de ministro do marido criado no formulario adicional');
@@ -650,23 +696,13 @@ export default function Familias() {
           }
         }
 
-        if (createdWomanId && shouldAutoCreateMinister(womanDraft.role)) {
+        if (isFederationScope && createdWomanId && shouldAutoCreateMinister(womanDraft.role)) {
           const ministerResult = await saveMinisterForMember(createdWomanId, womanMinisterForm);
           if (ministerResult === 'created') {
             toast.success('Cadastro de ministro da mulher criado no formulario adicional');
           } else {
             toast.success('Cadastro de ministro da mulher atualizado no formulario adicional');
           }
-        }
-
-        if (createdManId || createdWomanId) {
-          await fetchApi(`/api/families/${familyId}`, {
-            method: 'PATCH',
-            body: JSON.stringify({
-              manId: createdManId,
-              womanId: createdWomanId,
-            }),
-          });
         }
 
         toast.success('Família e membros criados com sucesso');
@@ -818,9 +854,15 @@ export default function Familias() {
                     const params = new URLSearchParams();
                     params.append('pageNumber', String(page));
                     params.append('pageQuantity', '10');
-                    if (query) params.append('query', query);
+                    if (query.trim()) params.append('querySearch', query.trim());
                     const result = await fetchApi<Church[]>(`/api/churches?${params}`);
-                    return Array.isArray(result) ? result.map(c => ({ id: c.id, name: `${c.id} - ${c.name}` })) : [];
+                    const churchResults = Array.isArray(result) ? result : [];
+                    setChurches((previousChurches) => {
+                      const churchesById = new Map(previousChurches.map((church) => [church.id, church]));
+                      churchResults.forEach((church) => churchesById.set(church.id, church));
+                      return Array.from(churchesById.values());
+                    });
+                    return churchResults.map((church) => ({ id: church.id, name: `${church.id} - ${church.name}` }));
                   }}
                   placeholder="Selecione uma igreja"
                   required
@@ -835,10 +877,16 @@ export default function Familias() {
                     const params = new URLSearchParams();
                     params.append('pageNumber', String(page));
                     params.append('pageQuantity', '10');
-                    if (query) params.append('query', query);
+                    if (query.trim()) params.append('querySearch', query.trim());
                     if (form.churchId) params.append('churchId', String(form.churchId));
                     const result = await fetchApi<Cell[]>(`/api/cells/filter?${params}`);
-                    return Array.isArray(result) ? result.map(c => ({ id: c.id, name: `${c.id} - ${c.name}` })) : [];
+                    const cellResults = Array.isArray(result) ? result : [];
+                    setCells((previousCells) => {
+                      const cellsById = new Map(previousCells.map((cell) => [cell.id, cell]));
+                      cellResults.forEach((cell) => cellsById.set(cell.id, cell));
+                      return Array.from(cellsById.values());
+                    });
+                    return cellResults.map((cell) => ({ id: cell.id, name: `${cell.id} - ${cell.name}` }));
                   }}
                   placeholder={form.churchId ? 'Selecione uma célula' : 'Escolha uma igreja primeiro'}
                   disabled={!form.churchId}
@@ -949,28 +997,42 @@ export default function Familias() {
                             </div>
                           </div>
                           <div className="flex-1">
-                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Função / Cargo</label>
-                            <select
-                              value={manDraft.role}
-                              onChange={(event) => setManDraft((prev) => ({ ...prev, role: event.target.value ? Number(event.target.value) : '' }))}
+                            <SmartSelect
+                              label="Função / Cargo"
+                              selectedId={manDraft.role}
+                              selectedItem={manDraft.role === 0
+                                ? { id: 0, name: 'Sem função' }
+                                : manRoleOptions.find((option) => option.value === manDraft.role)
+                                  ? { id: manDraft.role as number, name: manRoleOptions.find((option) => option.value === manDraft.role)!.label }
+                                  : null}
+                              onSelect={(id) => setManDraft((prev) => ({ ...prev, role: id === '' ? 0 : Number(id) }))}
+                              fetchItems={async (page) => page === 1
+                                ? [{ id: 0, name: 'Sem função' }, ...manRoleOptions.map((option) => ({ id: option.value, name: option.label }))]
+                                : []}
+                              searchable={false}
+                              pageSize={manRoleOptions.length + 1}
                               disabled={!createManMember}
-                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                            >
-                              <option value={0}>Sem função</option>
-                              {getMemberRoleOptionsForGender(GENDER_MALE).filter((option) => option.value !== 0).map((option) => (
-                                <option key={option.value} value={option.value}>
-                                  {option.label}
-                                </option>
-                              ))}
-                            </select>
+                            />
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    {shouldAutoCreateMinister(manDraft.role) && (
+                    {isFederationScope && shouldAutoCreateMinister(manDraft.role) && (
                       <div className="border-t border-white/10 pt-4 space-y-4">
-                        <p className="text-white/50 text-xs font-['Nunito'] uppercase tracking-wider">Dados de Ministro do marido</p>
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-white/50 text-xs font-['Nunito'] uppercase tracking-wider">Dados de Ministro do marido</p>
+                          <a
+                            href={RECEITA_CPF_URL}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 rounded-md border border-white/15 px-2 py-1 text-[11px] font-['Nunito'] text-white/70 hover:border-[#017158] hover:text-white"
+                            title="Consultar CPF na Receita Federal"
+                          >
+                            <span className="material-icons text-sm">open_in_new</span>
+                            Receita CPF
+                          </a>
+                        </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
                           <div className="md:col-span-4">
@@ -1074,67 +1136,11 @@ export default function Familias() {
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">CEP</label>
-                            <input
-                              type="text"
-                              value={formatCEP(manMinisterForm.zipCode)}
-                              onChange={(event) => handleManMinisterCEPChange(event.target.value)}
-                              inputMode="numeric"
-                              pattern="[0-9]*"
-                              maxLength={9}
-                              disabled={!createManMember}
-                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                              placeholder="00000-000"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Número</label>
-                            <input
-                              type="text"
-                              value={manMinisterForm.number}
-                              onChange={(event) => setManMinisterForm((prev) => ({ ...prev, number: event.target.value }))}
-                              disabled={!createManMember}
-                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                              placeholder="Nº"
-                            />
-                          </div>
-                          <div className="col-span-2">
-                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Rua</label>
-                            <input
-                              type="text"
-                              value={manMinisterForm.street}
-                              onChange={(event) => setManMinisterForm((prev) => ({ ...prev, street: event.target.value }))}
-                              disabled={!createManMember}
-                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                              placeholder="Nome da rua"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Cidade</label>
-                            <input
-                              type="text"
-                              value={manMinisterForm.city}
-                              onChange={(event) => setManMinisterForm((prev) => ({ ...prev, city: event.target.value }))}
-                              disabled={!createManMember}
-                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                              placeholder="Cidade"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Estado</label>
-                            <input
-                              type="text"
-                              value={manMinisterForm.state}
-                              onChange={(event) => setManMinisterForm((prev) => ({ ...prev, state: event.target.value }))}
-                              disabled={!createManMember}
-                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                              placeholder="UF"
-                              maxLength={2}
-                            />
-                          </div>
-                        </div>
+                        <AddressFormFields
+                          value={getMinisterAddressValue(manMinisterForm)}
+                          onChange={updateManMinisterAddress}
+                          disabled={!createManMember}
+                        />
                       </div>
                     )}
                   </div>
@@ -1234,28 +1240,42 @@ export default function Familias() {
                             </div>
                           </div>
                           <div className="flex-1">
-                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Função / Cargo</label>
-                            <select
-                              value={womanDraft.role}
-                              onChange={(event) => setWomanDraft((prev) => ({ ...prev, role: event.target.value ? Number(event.target.value) : '' }))}
+                            <SmartSelect
+                              label="Função / Cargo"
+                              selectedId={womanDraft.role}
+                              selectedItem={womanDraft.role === 0
+                                ? { id: 0, name: 'Sem função' }
+                                : womanRoleOptions.find((option) => option.value === womanDraft.role)
+                                  ? { id: womanDraft.role as number, name: womanRoleOptions.find((option) => option.value === womanDraft.role)!.label }
+                                  : null}
+                              onSelect={(id) => setWomanDraft((prev) => ({ ...prev, role: id === '' ? 0 : Number(id) }))}
+                              fetchItems={async (page) => page === 1
+                                ? [{ id: 0, name: 'Sem função' }, ...womanRoleOptions.map((option) => ({ id: option.value, name: option.label }))]
+                                : []}
+                              searchable={false}
+                              pageSize={womanRoleOptions.length + 1}
                               disabled={!createWomanMember}
-                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                            >
-                              <option value={0}>Sem função</option>
-                              {getMemberRoleOptionsForGender(GENDER_FEMALE).filter((option) => option.value !== 0).map((option) => (
-                                <option key={option.value} value={option.value}>
-                                  {option.label}
-                                </option>
-                              ))}
-                            </select>
+                            />
                           </div>
                         </div>
                       </div>
                     </div>
 
-                    {shouldAutoCreateMinister(womanDraft.role) && (
+                    {isFederationScope && shouldAutoCreateMinister(womanDraft.role) && (
                       <div className="border-t border-white/10 pt-4 space-y-4">
-                        <p className="text-white/50 text-xs font-['Nunito'] uppercase tracking-wider">Dados de Ministro da mulher</p>
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-white/50 text-xs font-['Nunito'] uppercase tracking-wider">Dados de Ministro da mulher</p>
+                          <a
+                            href={RECEITA_CPF_URL}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 rounded-md border border-white/15 px-2 py-1 text-[11px] font-['Nunito'] text-white/70 hover:border-[#017158] hover:text-white"
+                            title="Consultar CPF na Receita Federal"
+                          >
+                            <span className="material-icons text-sm">open_in_new</span>
+                            Receita CPF
+                          </a>
+                        </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
                           <div className="md:col-span-4">
@@ -1359,65 +1379,12 @@ export default function Familias() {
                           </div>
                         </div>
 
-                        <div className="border-t border-white/10 pt-4 space-y-3">
-                          <div>
-                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">CEP</label>
-                            <input
-                              type="text"
-                              value={womanMinisterForm.zipCode}
-                              onChange={(event) => setWomanMinisterForm((prev) => ({ ...prev, zipCode: event.target.value }))}
-                              disabled={!createWomanMember}
-                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                              placeholder="00000-000"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Rua</label>
-                            <input
-                              type="text"
-                              value={womanMinisterForm.street}
-                              onChange={(event) => setWomanMinisterForm((prev) => ({ ...prev, street: event.target.value }))}
-                              disabled={!createWomanMember}
-                              className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                              placeholder="Rua"
-                            />
-                          </div>
-                          <div className="grid grid-cols-3 gap-3">
-                            <div>
-                              <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Número</label>
-                              <input
-                                type="text"
-                                value={womanMinisterForm.number}
-                                onChange={(event) => setWomanMinisterForm((prev) => ({ ...prev, number: event.target.value }))}
-                                disabled={!createWomanMember}
-                                className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                                placeholder="Número"
-                              />
-                            </div>
-                            <div>
-                              <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Cidade</label>
-                              <input
-                                type="text"
-                                value={womanMinisterForm.city}
-                                onChange={(event) => setWomanMinisterForm((prev) => ({ ...prev, city: event.target.value }))}
-                                disabled={!createWomanMember}
-                                className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                                placeholder="Cidade"
-                              />
-                            </div>
-                            <div>
-                              <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Estado</label>
-                              <input
-                                type="text"
-                                value={womanMinisterForm.state}
-                                onChange={(event) => setWomanMinisterForm((prev) => ({ ...prev, state: event.target.value }))}
-                                disabled={!createWomanMember}
-                                className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                                placeholder="UF"
-                                maxLength={2}
-                              />
-                            </div>
-                          </div>
+                        <div className="border-t border-white/10 pt-4">
+                          <AddressFormFields
+                            value={getMinisterAddressValue(womanMinisterForm)}
+                            onChange={updateWomanMinisterAddress}
+                            disabled={!createWomanMember}
+                          />
                         </div>
                       </div>
                     )}
@@ -1430,30 +1397,42 @@ export default function Familias() {
                   <SmartSelect
                     label="Marido"
                     selectedId={form.manId}
-                    selectedItem={scopedMembers.find(m => m.id === form.manId) ? { id: scopedMembers.find(m => m.id === form.manId)!.id, name: scopedMembers.find(m => m.id === form.manId)!.name } : null}
+                    selectedItem={members.find(m => m.id === form.manId) ? { id: members.find(m => m.id === form.manId)!.id, name: members.find(m => m.id === form.manId)!.name } : null}
                     onSelect={id => setF('manId', id)}
                     fetchItems={async (page, query) => {
                       const params = new URLSearchParams();
                       params.append('pageNumber', String(page));
                       params.append('pageQuantity', '10');
-                      if (query) params.append('query', query);
+                      if (query.trim()) params.append('querySearch', query.trim());
                       const result = await fetchApi<Member[]>(`/api/members?${params}`);
-                      return Array.isArray(result) ? result.map(m => ({ id: m.id, name: m.name })) : [];
+                      const memberResults = Array.isArray(result) ? result : [];
+                      setMembers((previousMembers) => {
+                        const membersById = new Map(previousMembers.map((member) => [member.id, member]));
+                        memberResults.forEach((member) => membersById.set(member.id, member));
+                        return Array.from(membersById.values());
+                      });
+                      return memberResults.map((member) => ({ id: member.id, name: member.name }));
                     }}
                     placeholder="Selecione um membro"
                   />
                   <SmartSelect
                     label="Esposa"
                     selectedId={form.womanId}
-                    selectedItem={scopedMembers.find(m => m.id === form.womanId) ? { id: scopedMembers.find(m => m.id === form.womanId)!.id, name: scopedMembers.find(m => m.id === form.womanId)!.name } : null}
+                    selectedItem={members.find(m => m.id === form.womanId) ? { id: members.find(m => m.id === form.womanId)!.id, name: members.find(m => m.id === form.womanId)!.name } : null}
                     onSelect={id => setF('womanId', id)}
                     fetchItems={async (page, query) => {
                       const params = new URLSearchParams();
                       params.append('pageNumber', String(page));
                       params.append('pageQuantity', '10');
-                      if (query) params.append('query', query);
+                      if (query.trim()) params.append('querySearch', query.trim());
                       const result = await fetchApi<Member[]>(`/api/members?${params}`);
-                      return Array.isArray(result) ? result.map(m => ({ id: m.id, name: m.name })) : [];
+                      const memberResults = Array.isArray(result) ? result : [];
+                      setMembers((previousMembers) => {
+                        const membersById = new Map(previousMembers.map((member) => [member.id, member]));
+                        memberResults.forEach((member) => membersById.set(member.id, member));
+                        return Array.from(membersById.values());
+                      });
+                      return memberResults.map((member) => ({ id: member.id, name: member.name }));
                     }}
                     placeholder="Selecione um membro"
                   />
@@ -1477,19 +1456,39 @@ export default function Familias() {
 
       {showMembersModal && selectedFamily && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-[#2b2b2b] rounded-xl p-6 max-w-2xl w-full shadow-2xl">
-            <div className="flex items-center justify-between mb-5">
+          <div className="bg-[#2b2b2b] rounded-xl max-w-4xl w-full shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-white/10 px-6 py-4">
               <div>
                 <h3 className="text-white font-['Nunito'] font-semibold text-lg">
                   Membros da família
                 </h3>
-                <p className="text-white/50 font-['Nunito'] text-sm mt-1">{selectedFamily.name}</p>
+                <p className="text-white/50 font-['Nunito'] text-sm mt-1">Dados da família e de seus membros associados</p>
               </div>
               <button onClick={() => setShowMembersModal(false)} className="text-white/40 hover:text-white transition-colors">
                 <span className="material-icons">close</span>
               </button>
             </div>
 
+            <div className="space-y-5 px-6 py-6">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {[
+                  ['ID da família', String(selectedFamily.id)],
+                  ['Igreja', selectedFamily.churchName || '-'],
+                  ['Célula', selectedFamily.cellName || '-'],
+                  ['Marido', selectedFamily.manName || '-'],
+                  ['Mulher', selectedFamily.womanName || '-'],
+                  ['Data do casamento', formatDateOnly(selectedFamily.weddingDate)],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-xl border border-white/10 bg-black/10 p-3">
+                    <p className="text-white/45 text-[11px] uppercase tracking-[0.15em] font-['Nunito']">{label}</p>
+                    <p className="text-white text-sm font-['Nunito'] mt-1 break-words">{value}</p>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <h4 className="text-white font-['Nunito'] font-semibold">Membros associados</h4>
+                <p className="text-white/45 font-['Nunito'] text-xs mt-1">Dados completos dos membros vinculados a esta família.</p>
+              </div>
             {membersLoading ? (
               <div className="rounded-lg border border-white/10 bg-white/5 px-4 py-6 text-center text-white/50 font-['Nunito'] text-sm">
                 Carregando membros...
@@ -1499,11 +1498,11 @@ export default function Familias() {
                 Nenhum membro vinculado a esta família.
               </div>
             ) : (
-              <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+              <div className="space-y-3">
                 {familyMembers.map((member) => (
                   <div
                     key={member.id}
-                    className={`rounded-lg px-4 py-3 flex items-center justify-between gap-3 border ${
+                    className={`rounded-xl p-4 border ${
                       member.id === selectedFamily.manId
                         ? 'border-[#017158] bg-[#017158]/10'
                         : member.id === selectedFamily.womanId
@@ -1511,13 +1510,12 @@ export default function Familias() {
                           : 'border-white/10 bg-white/5'
                     }`}
                   >
-                    <div>
-                      <p className="text-white font-['Nunito'] text-sm font-medium">{member.name}</p>
-                      <p className="text-white/45 font-['Nunito'] text-xs mt-1">
-                        {member.roleName || member.className || 'Membro'}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 flex-wrap justify-end">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-white font-['Nunito'] text-sm font-medium">{member.name}</p>
+                        <p className="text-white/45 font-['Nunito'] text-xs mt-1">{member.roleName || member.className || 'Membro'}</p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-wrap justify-end">
                       {member.id === selectedFamily.manId && (
                         <span className="rounded-full border border-[#017158]/30 bg-[#017158]/10 px-3 py-1 text-xs text-[#8de2c7] font-['Nunito']">
                           Marido
@@ -1531,13 +1529,32 @@ export default function Familias() {
                       <span className="rounded-full border border-white/10 bg-black/10 px-3 py-1 text-xs text-white/60 font-['Nunito']">
                         ID {member.id}
                       </span>
+                      </div>
+                    </div>
+                    <div className="grid gap-3 mt-4 sm:grid-cols-2 lg:grid-cols-4">
+                      {[
+                        ['Função', member.roleName || member.className || 'Membro'],
+                        ['Gênero', member.genderName || (Number(member.gender) === 1 ? 'Masculino' : Number(member.gender) === 2 ? 'Feminino' : '-')],
+                        ['Telefone', member.cellPhone?.internationalFormat || member.cellPhone?.displayFormat || [member.cellPhone?.countryCode, member.cellPhone?.number].filter(Boolean).join(' ') || '-'],
+                        ['Nascimento', formatDateOnly(member.birthDate)],
+                        ['Já foi casado(a)', member.hasBeenMarried ? 'Sim' : 'Não'],
+                        ['Cônjuge', member.spouseName || '-'],
+                        ['Casamento', formatDateOnly(member.weddingDate)],
+                        ['Classe', member.className || '-'],
+                      ].map(([label, value]) => (
+                        <div key={label} className="rounded-lg border border-white/10 bg-black/10 px-3 py-2">
+                          <p className="text-white/45 text-[10px] uppercase tracking-[0.15em] font-['Nunito']">{label}</p>
+                          <p className="text-white text-sm font-['Nunito'] mt-1 break-words">{value}</p>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 ))}
               </div>
             )}
 
-            <div className="flex justify-end mt-6">
+            </div>
+            <div className="flex justify-end border-t border-white/10 px-6 py-4">
               <button
                 onClick={() => setShowMembersModal(false)}
                 className="px-4 py-2 rounded-lg border border-white/20 text-white/60 hover:text-white hover:border-white/40 transition-colors font-['Nunito'] text-sm"

@@ -3,16 +3,16 @@ import ICRLayout from '../components/ICRLayout';
 import CRUDTable, { Column } from '../components/CRUDTable';
 import SmartSelect, { SmartSelectOption } from '../components/SmartSelect';
 import MultiSelect from '../components/MultiSelect';
+import AddressFormFields, { AddressFormValue } from '../components/AddressFormFields';
 import { useICRAuth } from '../contexts/ICRAuthContext';
 import { buildLocalChurchFallback, getScopeLevel, resolveScopeRestrictions } from '../lib/scope-access';
 import { useICRApi, Member, Family, Church, Cell, Federation, Minister } from '../hooks/useICRApi';
 import { settledValue } from '@/lib/utils';
 import { buildMemberListEndpoint } from '../lib/member-list-query';
 import { buildPaginatedListEndpoint } from '../lib/paginated-list-query';
-import { useViaCEP } from '../hooks/useViaCEP';
 import { handleDatePaste, formatDateOnly, parseDateOnly } from '../lib/date-utils';
 import { DateInputWithPaste } from '../components/ui/DateInputWithPaste';
-import { countrySelectItems, DEFAULT_COUNTRY_CODE, formatPhoneNumber, formatPostalCode, normalizePhoneNumber, normalizePostalCode, validatePhoneNumber } from '../lib/country';
+import { countrySelectItems, DEFAULT_COUNTRY_CODE, formatPhoneNumber, normalizePhoneNumber, normalizePostalCode, validatePhoneNumber } from '../lib/country';
 import {
   GENDER_FEMALE,
   PASTOR_ROLE,
@@ -53,9 +53,18 @@ interface MinistroInlineForm {
 }
 
 const normalizeCPF = (value: string): string => value.replace(/\D/g, '').slice(0, 11);
+const RECEITA_CPF_URL = 'https://servicos.receita.fazenda.gov.br/servicos/cpf/consultasituacao/ConsultaPublica.asp';
 const getPhoneDisplay = (phone?: Member['cellPhone']): string => {
   if (!phone) return '-';
   return phone.displayFormat || phone.internationalFormat || phone.number || '-';
+};
+
+const getEditablePhoneNumber = (phone?: Member['cellPhone']): string => {
+  if (!phone) return '';
+
+  // Cadastros antigos podem ter `number` no padrão E.164 sem o "+" (ex.: 552190000000).
+  // O formato nacional retornado pela API é a fonte segura para preencher o campo de edição.
+  return normalizePhoneNumber(phone.countryCode || DEFAULT_COUNTRY_CODE, phone.displayFormat || phone.number || '');
 };
 
 const formatCPF = (value: string): string => {
@@ -91,13 +100,24 @@ const EMPTY_MINISTER_FORM: MinistroInlineForm = {
   isInsured: false,
 };
 
+const getMinisterAddressValue = (ministerForm: MinistroInlineForm): AddressFormValue => ({
+  countryCode: ministerForm.countryCode,
+  postalCode: ministerForm.postalCode,
+  street: ministerForm.street,
+  number: ministerForm.number,
+  complement: ministerForm.complement,
+  city: ministerForm.city,
+  state: ministerForm.state,
+  countyOrRegion: ministerForm.countyOrRegion,
+});
+
 export default function Membros() {
   const { fetchApi } = useICRApi();
   const { user } = useICRAuth();
-  const { fetchCEP, loading: ministerCepLoading, error: ministerCepError } = useViaCEP();
   const scopeLevel = getScopeLevel(user?.scope, user?.username);
   const isLocalScope = scopeLevel === 'local';
   const isFederatedScope = scopeLevel === 'federated';
+  const isFederationScope = scopeLevel === 'federation';
   const todayDate = new Date().toISOString().split('T')[0];
   const [data, setData] = useState<Member[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -130,30 +150,27 @@ export default function Membros() {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const latestMembersRequestRef = useRef(0);
-  const scopedChurchesRef = useRef<Church[]>([]);
+  const familyScopeRef = useRef<{
+    scopeLevel: typeof scopeLevel;
+    churchId?: number;
+    federationId?: number;
+  }>({ scopeLevel });
 
   const shouldAutoCreateMinister = (role: number | '') => role === PASTOR_ROLE || role === PRESBITERO_ROLE;
   const isPresbiteroSelected = form.role === PRESBITERO_ROLE;
 
-  const handleMinisterCEPChange = async (value: string) => {
-    const normalizedPostalCode = normalizePostalCode(ministerForm.countryCode, value);
-    setMinisterForm((prev) => ({ ...prev, postalCode: normalizedPostalCode }));
-
-    if (ministerForm.countryCode !== 'BR') return;
-
-    const cleanCEP = normalizedPostalCode;
-    if (cleanCEP.length === 8) {
-      const cepData = await fetchCEP(value);
-      if (cepData) {
-        setMinisterForm((prev) => ({
-          ...prev,
-          street: cepData.street,
-          city: cepData.city,
-          state: cepData.state,
-        }));
-        toast.success('Endereco de ministro preenchido automaticamente');
-      }
-    }
+  const updateMinisterAddress = (address: AddressFormValue) => {
+    setMinisterForm((previous) => ({
+      ...previous,
+      countryCode: address.countryCode || DEFAULT_COUNTRY_CODE,
+      postalCode: address.postalCode || '',
+      street: address.street || '',
+      number: address.number || '',
+      complement: address.complement || '',
+      city: address.city || '',
+      state: address.state || '',
+      countyOrRegion: address.countyOrRegion || '',
+    }));
   };
 
   const handleGenderChange = (gender: number) => {
@@ -165,8 +182,12 @@ export default function Membros() {
   };
 
   const saveMinisterForMember = async (memberId: number) => {
-    const hasAddress = ministerForm.postalCode || ministerForm.street || ministerForm.number || ministerForm.city || ministerForm.state || ministerForm.countyOrRegion;
+    const hasAddress = ministerForm.postalCode || ministerForm.street || ministerForm.number || ministerForm.city || ministerForm.state;
     const today = new Date().toISOString().split('T')[0];
+
+    if (hasAddress && (!ministerForm.postalCode || !ministerForm.street || !ministerForm.number || !ministerForm.city || !ministerForm.state)) {
+      throw new Error('Preencha CEP, número, rua, cidade e estado ou deixe o endereço vazio.');
+    }
 
     const ministerBody: Record<string, unknown> = {
       memberId,
@@ -189,8 +210,6 @@ export default function Membros() {
         state: ministerForm.state || '',
         countyOrRegion: ministerForm.countyOrRegion || '',
       };
-    } else {
-      ministerBody.address = null;
     }
 
     const ministers = await fetchApi<Minister[]>('/api/ministers?pageNumber=1&pageQuantity=100').catch(() => []);
@@ -315,7 +334,7 @@ export default function Membros() {
       hasBeenMarried: item.hasBeenMarried || false,
       role: getMemberRoleValue(item.role) === '' ? 0 : getMemberRoleValue(item.role),
       phoneCountryCode: item.cellPhone?.countryCode || DEFAULT_COUNTRY_CODE,
-      phoneNumber: item.cellPhone?.number || '',
+      phoneNumber: getEditablePhoneNumber(item.cellPhone),
     });
     setMinisterForm(EMPTY_MINISTER_FORM);
     setPhoneError(null);
@@ -346,7 +365,7 @@ export default function Membros() {
 
     const normalizedMinisterCPF = normalizeCPF(ministerForm.cpf);
     const normalizedMinisterCEP = normalizePostalCode(ministerForm.countryCode, ministerForm.postalCode);
-    if (shouldAutoCreateMinister(form.role)) {
+    if (isFederationScope && shouldAutoCreateMinister(form.role)) {
       if (normalizedMinisterCPF && normalizedMinisterCPF.length !== 11) {
         toast.error('CPF do ministro deve conter 11 dígitos');
         return;
@@ -390,7 +409,7 @@ export default function Membros() {
         toast.success('Membro criado com sucesso');
       }
 
-      if (memberId && shouldAutoCreateMinister(form.role)) {
+      if (isFederationScope && memberId && shouldAutoCreateMinister(form.role)) {
         const ministerResult = await saveMinisterForMember(memberId);
         if (ministerResult === 'created') {
           toast.success('Cadastro de ministro criado no formulario adicional');
@@ -529,29 +548,32 @@ export default function Membros() {
     return churches.filter((church) => allowedChurchIds.has(church.id));
   }, [churches, restrictions.allowedChurchIds, scopeLevel]);
 
-  // Keep ref updated with latest scopedChurches value
   useEffect(() => {
-    scopedChurchesRef.current = scopedChurches;
-  }, [scopedChurches]);
+    familyScopeRef.current = {
+      scopeLevel,
+      churchId: restrictions.lockedChurchId,
+      federationId: restrictions.lockedFederationId,
+    };
+  }, [restrictions.lockedChurchId, restrictions.lockedFederationId, scopeLevel]);
 
   const fetchFamilies = async (page: number, query: string): Promise<SmartSelectOption[]> => {
     const params = new URLSearchParams();
     params.append('pageNumber', String(page));
     params.append('pageQuantity', String(10));
-    
-    // Get allowed church IDs from scoped churches ref (always up-to-date)
-    const currentScopedChurches = scopedChurchesRef.current;
-    const allowedChurchIds = Array.from(new Set(currentScopedChurches.map((church) => church.id)));
-    
-    if (allowedChurchIds.length > 0) {
-      params.append('churchId', allowedChurchIds[0].toString());
+
+    const currentScope = familyScopeRef.current;
+    if (currentScope.scopeLevel === 'local' && typeof currentScope.churchId === 'number') {
+      params.append('churchId', String(currentScope.churchId));
+    }
+    if (currentScope.scopeLevel === 'federated' && typeof currentScope.federationId === 'number') {
+      params.append('federationId', String(currentScope.federationId));
     }
     
     if (query.trim()) {
       params.append('querySearch', query.trim());
     }
     
-    const endpoint = `/api/families?${params.toString()}`;
+    const endpoint = `/api/families/filter?${params.toString()}`;
     
     try {
       const result = await fetchApi<Family[]>(endpoint);
@@ -801,9 +823,14 @@ export default function Membros() {
                 </select>
               </div>
 
-              {shouldAutoCreateMinister(form.role) && (
+              {isFederationScope && shouldAutoCreateMinister(form.role) && (
                 <div className="border-t border-white/10 pt-4 space-y-4">
                   <p className="text-white/50 text-xs font-['Nunito'] uppercase tracking-wider">Dados de Ministro (Pastor/Presbitero)</p>
+                  {form.role === PASTOR_ROLE && (
+                    <a href={RECEITA_CPF_URL} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 text-xs text-[#4fd6b5] hover:text-white">
+                      <span className="material-icons text-sm">open_in_new</span> Consultar CPF na Receita Federal
+                    </a>
+                  )}
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
@@ -853,103 +880,10 @@ export default function Membros() {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <SmartSelect
-                      className="col-span-2"
-                      label="País"
-                      selectedId={ministerForm.countryCode}
-                      selectedItem={countrySelectItems.find(c => c.id === ministerForm.countryCode) || null}
-                      onSelect={(id) => {
-                        const countryCode = typeof id === 'string' ? id : DEFAULT_COUNTRY_CODE;
-                        setMinisterForm((prev) => ({ ...prev, countryCode, postalCode: '' }));
-                      }}
-                      fetchItems={async (page, query) => {
-                        const filtered = countrySelectItems.filter(c => 
-                          c.name.toLowerCase().includes(query.toLowerCase())
-                        );
-                        const start = (page - 1) * 10;
-                        const end = start + 10;
-                        return filtered.slice(start, end);
-                      }}
-                      placeholder="Selecione um país"
-                    />
-                    <div>
-                      <label className="text-white/70 text-sm font-['Nunito'] block mb-1">{ministerForm.countryCode === 'BR' ? 'CEP' : 'Código postal'} {ministerForm.countryCode === 'BR' && ministerCepLoading && <span className="text-[#017158] text-xs">buscando...</span>}</label>
-                      <input
-                        type="text"
-                        value={formatPostalCode(ministerForm.countryCode, ministerForm.postalCode)}
-                        onChange={(e) => handleMinisterCEPChange(e.target.value)}
-                        inputMode={ministerForm.countryCode === 'BR' ? 'numeric' : 'text'}
-                        pattern={ministerForm.countryCode === 'BR' ? '[0-9]*' : undefined}
-                        maxLength={ministerForm.countryCode === 'BR' ? 9 : 24}
-                        disabled={ministerForm.countryCode === 'BR' && ministerCepLoading}
-                        className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158] disabled:opacity-50"
-                        placeholder={ministerForm.countryCode === 'BR' ? '00000-000' : 'Informe o código postal'}
-                      />
-                      {ministerForm.countryCode === 'BR' && ministerCepError && <p className="text-red-400 text-xs mt-1">{ministerCepError}</p>}
-                    </div>
-                    <div>
-                      <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Número</label>
-                      <input
-                        type="text"
-                        value={ministerForm.number}
-                        onChange={(e) => setMinisterF('number', e.target.value)}
-                        className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                        placeholder="Nº"
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Rua</label>
-                      <input
-                        type="text"
-                        value={ministerForm.street}
-                        onChange={(e) => setMinisterF('street', e.target.value)}
-                        className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                        placeholder="Nome da rua"
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Complemento</label>
-                      <input
-                        type="text"
-                        value={ministerForm.complement}
-                        onChange={(e) => setMinisterF('complement', e.target.value)}
-                        className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                        placeholder="Apto, bloco, referência"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Cidade</label>
-                      <input
-                        type="text"
-                        value={ministerForm.city}
-                        onChange={(e) => setMinisterF('city', e.target.value)}
-                        className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                        placeholder="Cidade"
-                      />
-                    </div>
-                    <div>
-                      <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Estado</label>
-                      <input
-                        type="text"
-                        value={ministerForm.state}
-                        onChange={(e) => setMinisterF('state', e.target.value)}
-                        className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                        placeholder="UF"
-                        maxLength={2}
-                      />
-                    </div>
-                    <div>
-                      <label className="text-white/70 text-sm font-['Nunito'] block mb-1">Região/Condado</label>
-                      <input
-                        type="text"
-                        value={ministerForm.countyOrRegion}
-                        onChange={(e) => setMinisterF('countyOrRegion', e.target.value)}
-                        className="w-full bg-[#1c1c1c] border border-white/20 rounded-lg px-4 py-2.5 text-white font-['Nunito'] text-sm focus:outline-none focus:border-[#017158]"
-                        placeholder="Condado, província, região"
-                      />
-                    </div>
-                  </div>
+                  <AddressFormFields
+                    value={getMinisterAddressValue(ministerForm)}
+                    onChange={updateMinisterAddress}
+                  />
                 </div>
               )}
 

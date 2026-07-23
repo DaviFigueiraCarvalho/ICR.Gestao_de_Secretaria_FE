@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import icrLogo from '../assets/icr-logo.svg';
 import SupportButton from './SupportButton';
 import SessionTimer from './SessionTimer';
+import { useICRApi } from '../hooks/useICRApi';
 
 const ICR_LOGO = icrLogo;
 
@@ -41,6 +42,7 @@ const navGroups: NavGroup[] = [
       { icon: 'church', label: 'Igrejas', path: '/churches' },
       { icon: 'paid', label: 'Repasses', path: '/repasses' },
       { icon: 'people', label: 'Usuários', path: '/users' },
+      { icon: 'assignment_late', label: 'Pendências ministeriais', path: '/minister-registration-pendencies' },
     ],
   },
   {
@@ -88,6 +90,7 @@ interface ICRLayoutProps {
 export default function ICRLayout({ children, title }: ICRLayoutProps) {
   const [location, setLocation] = useLocation();
   const { user, logout } = useICRAuth();
+  const { fetchApi } = useICRApi();
   const { theme } = useTheme();
   const scopeLevel = getScopeLevel(user?.scope, user?.username);
   const [sidebarOpen, setSidebarOpen] = useState<boolean>(() => {
@@ -97,6 +100,25 @@ export default function ICRLayout({ children, title }: ICRLayoutProps) {
   const [isMobile, setIsMobile] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [tooltipState, setTooltipState] = useState<TooltipState>({ x: 0, y: 0, label: null });
+  const [pendingMinisterRegistrations, setPendingMinisterRegistrations] = useState(0);
+
+  useEffect(() => {
+    if (scopeLevel !== 'federation') {
+      setPendingMinisterRegistrations(0);
+      return;
+    }
+
+    const loadPendingMinisterRegistrations = async () => {
+      try {
+        const result = await fetchApi<unknown[]>('/api/ministers/pending-registrations');
+        setPendingMinisterRegistrations(Array.isArray(result) ? result.length : 0);
+      } catch {
+        setPendingMinisterRegistrations(0);
+      }
+    };
+
+    void loadPendingMinisterRegistrations();
+  }, [fetchApi, scopeLevel]);
 
   useEffect(() => {
     localStorage.setItem('sidebarOpen', JSON.stringify(sidebarOpen));
@@ -238,7 +260,14 @@ export default function ICRLayout({ children, title }: ICRLayoutProps) {
                         >
                           <span className="material-icons text-[22px] flex-shrink-0">{item.icon}</span>
                           {sidebarOpen && (
-                            <span className="text-sm font-['Nunito'] font-medium truncate">{item.label}</span>
+                            <span className="flex min-w-0 items-center gap-2 text-sm font-['Nunito'] font-medium">
+                              <span className="truncate">{item.label}</span>
+                              {item.path === '/minister-registration-pendencies' && pendingMinisterRegistrations > 0 && (
+                                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1.5 text-xs text-white">
+                                  {pendingMinisterRegistrations}
+                                </span>
+                              )}
+                            </span>
                           )}
                         </div>
                       </div>

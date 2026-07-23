@@ -21,6 +21,7 @@ import Repasses from "./pages/Repass";
 import Usuarios from "./pages/UserRole";
 import Settings from "./pages/Settings";
 import Profile from "./pages/Profile";
+import MinisterRegistrationPendencies from "./pages/MinisterRegistrationPendencies";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { isAuthenticated, isLoading, user } = useICRAuth();
@@ -62,6 +63,7 @@ function Router() {
       <Route path="/ministers" component={() => <ProtectedRoute component={Ministros} />} />
       <Route path="/ministers-insurance" component={() => <ProtectedRoute component={MinistersInsurance} />} />
       <Route path="/ministers-dates" component={() => <ProtectedRoute component={DatasPastores} />} />
+      <Route path="/minister-registration-pendencies" component={() => <ProtectedRoute component={MinisterRegistrationPendencies} />} />
       <Route path="/members-dates" component={() => <ProtectedRoute component={DatasMembers} />} />
       <Route path="/repasses" component={() => <ProtectedRoute component={Repasses} />} />
       <Route path="/settings" component={() => <ProtectedRoute component={Settings} />} />

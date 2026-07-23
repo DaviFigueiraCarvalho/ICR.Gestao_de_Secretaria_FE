@@ -288,16 +288,6 @@ export default function Celulas() {
     return new Set(scopedChurches.map((church) => church.federationId));
   }, [federations, restrictions.lockedFederationId, scopeLevel, scopedChurches]);
 
-  const scopedMembers = useMemo(() => {
-    const allowedFamilyIds = new Set(
-      families
-        .filter((family) => scopedChurches.some((church) => church.id === family.churchId))
-        .map((family) => family.id),
-    );
-
-    return members.filter((member) => member.familyId && allowedFamilyIds.has(member.familyId));
-  }, [families, members, scopedChurches]);
-
   useEffect(() => {
     if (isFederatedScope && typeof restrictions.lockedFederationId === 'number') {
       setSelectedFederationId(restrictions.lockedFederationId);
@@ -342,6 +332,52 @@ export default function Celulas() {
     });
     const result = await fetchApi<Church[]>(endpoint);
     return Array.isArray(result) ? result.map(c => ({ id: c.id, name: `${c.id} - ${c.name}` })) : [];
+  };
+
+  const fetchChurchItems = async (selectPage: number, query: string) => {
+    const path = isFederatedScope && typeof restrictions.lockedFederationId === 'number'
+      ? `/api/churches/federation/${restrictions.lockedFederationId}`
+      : '/api/churches';
+    const endpoint = buildPaginatedListEndpoint(path, {
+      pageNumber: selectPage,
+      pageQuantity: 10,
+      querySearch: query,
+    });
+    const result = await fetchApi<Church[]>(endpoint);
+    const churchResults = Array.isArray(result) ? result : [];
+
+    setChurches((previousChurches) => {
+      const churchesById = new Map(previousChurches.map((church) => [church.id, church]));
+      churchResults.forEach((church) => churchesById.set(church.id, church));
+      return Array.from(churchesById.values());
+    });
+
+    const allowedChurchIds = new Set(scopedChurches.map((church) => church.id));
+    const visibleChurches = scopeLevel === 'federation'
+      ? churchResults
+      : churchResults.filter((church) => allowedChurchIds.has(church.id));
+
+    return visibleChurches.map((church) => ({ id: church.id, name: `${church.id} - ${church.name}` }));
+  };
+
+  const fetchResponsibleItems = async (selectPage: number, query: string) => {
+    if (!form.churchId) return [];
+
+    const params = new URLSearchParams();
+    params.append('pageNumber', String(selectPage));
+    params.append('pageQuantity', '10');
+    params.append('churchId', String(form.churchId));
+    if (query.trim()) params.append('querySearch', query.trim());
+
+    const result = await fetchApi<Member[]>(`/api/members/filter?${params.toString()}`);
+    const memberResults = Array.isArray(result) ? result : [];
+    setMembers((previousMembers) => {
+      const membersById = new Map(previousMembers.map((member) => [member.id, member]));
+      memberResults.forEach((member) => membersById.set(member.id, member));
+      return Array.from(membersById.values());
+    });
+
+    return memberResults.map((member) => ({ id: member.id, name: member.name }));
   };
 
   const topFilters = (
@@ -449,15 +485,12 @@ export default function Celulas() {
                   label="Igreja"
                   selectedId={form.churchId}
                   selectedItem={churches.find(c => c.id === form.churchId) ? { id: churches.find(c => c.id === form.churchId)!.id, name: `${churches.find(c => c.id === form.churchId)!.id} - ${churches.find(c => c.id === form.churchId)!.name}` } : null}
-                  onSelect={(id) => setForm({ ...form, churchId: id === '' ? '' : Number(id) })}
-                  fetchItems={async (page, query) => {
-                    const params = new URLSearchParams();
-                    params.append('pageNumber', String(page));
-                    params.append('pageQuantity', '10');
-                    if (query) params.append('query', query);
-                    const result = await fetchApi<Church[]>(`/api/churches?${params}`);
-                    return Array.isArray(result) ? result.map(c => ({ id: c.id, name: `${c.id} - ${c.name}` })) : [];
-                  }}
+                  onSelect={(id) => setForm((previousForm) => ({
+                    ...previousForm,
+                    churchId: id === '' ? '' : Number(id),
+                    responsibleId: '',
+                  }))}
+                  fetchItems={fetchChurchItems}
                   placeholder="Selecione uma igreja"
                   disabled={isLocalScope}
                 />
@@ -465,16 +498,10 @@ export default function Celulas() {
               <SmartSelect
                 label="Responsável"
                 selectedId={form.responsibleId}
-                selectedItem={scopedMembers.find(m => m.id === form.responsibleId) ? { id: scopedMembers.find(m => m.id === form.responsibleId)!.id, name: scopedMembers.find(m => m.id === form.responsibleId)!.name } : null}
-                onSelect={(id) => setForm({ ...form, responsibleId: id === '' ? '' : Number(id) })}
-                fetchItems={async (page, query) => {
-                  const params = new URLSearchParams();
-                  params.append('pageNumber', String(page));
-                  params.append('pageQuantity', '10');
-                  if (query) params.append('query', query);
-                  const result = await fetchApi<Member[]>(`/api/members?${params}`);
-                  return Array.isArray(result) ? result.map(m => ({ id: m.id, name: m.name })) : [];
-                }}
+                selectedItem={members.find(m => m.id === form.responsibleId) ? { id: members.find(m => m.id === form.responsibleId)!.id, name: members.find(m => m.id === form.responsibleId)!.name } : null}
+                onSelect={(id) => setForm((previousForm) => ({ ...previousForm, responsibleId: id === '' ? '' : Number(id) }))}
+                fetchItems={fetchResponsibleItems}
+                disabled={!form.churchId}
                 placeholder="Selecione um responsável"
               />
             </div>

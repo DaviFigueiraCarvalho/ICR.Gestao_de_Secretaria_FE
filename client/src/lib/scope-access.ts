@@ -83,6 +83,7 @@ const FEDERATION_ONLY_PATHS = new Set([
   '/ministers',
   '/ministers-insurance',
   '/ministers-dates',
+  '/minister-registration-pendencies',
 ]);
 
 export const canAccessPathByScope = (scopeLevel: ScopeLevel, path: string): boolean => {

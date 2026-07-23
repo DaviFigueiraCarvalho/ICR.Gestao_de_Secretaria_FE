@@ -16,6 +16,8 @@ interface SmartSelectProps {
   placeholder?: string;
   required?: boolean;
   disabled?: boolean;
+  searchable?: boolean;
+  pageSize?: number;
   className?: string;
   fetchItems: (page: number, query: string) => Promise<SmartSelectOption[]>;
 }
@@ -31,6 +33,8 @@ export default function SmartSelect({
   placeholder = 'Selecione...',
   required = false,
   disabled = false,
+  searchable = true,
+  pageSize = PAGE_SIZE,
   className = '',
   fetchItems,
 }: SmartSelectProps) {
@@ -65,7 +69,7 @@ export default function SmartSelect({
       const newItems = await fetchItems(pageNum, searchQuery);
 
       // Detect if we've reached the end of pagination
-      const hasMoreResults = newItems.length >= PAGE_SIZE;
+      const hasMoreResults = newItems.length >= pageSize;
       setHasMore(hasMoreResults);
 
       if (append) {
@@ -178,13 +182,15 @@ export default function SmartSelect({
             </span>
           </button>
         </PopoverTrigger>
-        <PopoverContent className="w-full p-0 flex flex-col">
+        <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0 flex flex-col">
           <Command className="flex-1" shouldFilter={false}>
-            <CommandInput
-              value={query}
-              onValueChange={handleSearchChange}
-              placeholder={`Buscar ${label.toLowerCase()}`}
-            />
+            {searchable && (
+              <CommandInput
+                value={query}
+                onValueChange={handleSearchChange}
+                placeholder={`Buscar ${label.toLowerCase()}`}
+              />
+            )}
             <CommandList
               ref={commandListRef}
               onScroll={handleScroll}
@@ -229,7 +235,7 @@ export default function SmartSelect({
                 </div>
               ) : !loading && !query.trim() ? (
                 <div className="px-4 py-6 text-center text-white/40 text-sm">
-                  Digite para buscar...
+                  {searchable ? 'Digite para buscar...' : 'Nenhum item disponível.'}
                 </div>
               ) : null}
             </CommandList>
