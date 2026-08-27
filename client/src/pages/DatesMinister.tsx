@@ -5,6 +5,8 @@ import { useTheme } from '../contexts/ThemeContext';
 import { isPermissionError } from '@/lib/utils';
 import { parseDateOnly } from '../lib/date-utils';
 import PermissionDeniedError from '../components/PermissionDeniedError';
+import { downloadTablePdf } from '../lib/pdf-export';
+import { getMinisterRolePrefix } from '../lib/member-roles';
 
 interface MinisterBirthday {
   id?: number;
@@ -15,7 +17,8 @@ interface MinisterBirthday {
   birthday?: string;
   date?: string;
   weddingDate?: string;
-  role?: number; // 1 = Pastor (Pr), 2 = Presbítero (Pb)
+  memberRole?: number;
+  memberRoleName?: string;
 }
 
 interface DateItem {
@@ -39,20 +42,14 @@ const TABS: { id: TabType; label: string; type?: string }[] = [
   { id: 'wedding', label: 'Casamentos', type: 'wedding' },
 ];
 
-const getMinisterPrefix = (role?: number): string => {
-  if (role === 1) return 'Pr ';
-  if (role === 2) return 'Pb ';
-  return '';
-};
-
 const getDisplayName = (item: MinisterBirthday): string => {
-  const prefix = getMinisterPrefix(item.role);
-  
-  // Se for casamento, mostrar "Pr Nome e Nome da Esposa" ou "Pb Nome e Nome da Esposa"
+  const prefix = getMinisterRolePrefix(item.memberRole);
+
+  // Se for casamento, mostrar "Pr. Nome e Nome da Esposa" ou "Pb. Nome e Nome da Esposa"
   if ((item.type === 'WEDDING' || item.type === 'wedding') && item.memberWifeName) {
     return `${prefix}${item.name} e ${item.memberWifeName}`;
   }
-  
+
   return `${prefix}${item.name}`;
 };
 
@@ -120,6 +117,27 @@ export default function DatasPastores() {
     }))
     .sort((a, b) => getDayOfMonth(a.date) - getDayOfMonth(b.date)), [data]);
 
+  const handleDownloadPdf = () => {
+    const activeTabLabel = TABS.find((tab) => tab.id === activeTab)?.label ?? '';
+    downloadTablePdf({
+      fileName: `datas-ministros-${MONTHS[selectedMonth - 1].toLowerCase()}.pdf`,
+      title: 'Datas de Pastores e Presbíteros',
+      subtitle: `${activeTabLabel} - ${MONTHS[selectedMonth - 1]}`,
+      columns: [
+        { header: 'Nome', widthFraction: 0.4, align: 'left' },
+        { header: 'Igreja', widthFraction: 0.35, align: 'left' },
+        { header: 'Dia', widthFraction: 0.1, align: 'center' },
+        { header: 'Tipo', widthFraction: 0.15, align: 'center' },
+      ],
+      rows: displayItems.map((item) => [
+        item.name,
+        item.churchName || '—',
+        getDayString(item.date),
+        item.type === 'birthday' ? 'Aniversário' : 'Casamento',
+      ]),
+    });
+  };
+
   const getTypeLabel = (type: string) => {
     const types: Record<string, string> = {
       'BIRTHDAY': 'Aniversário',
@@ -163,19 +181,29 @@ export default function DatasPastores() {
   return (
     <ICRLayout title="Datas de Pastores">
       {/* Seletor de Mês */}
-      <div className="mb-6 flex flex-wrap items-center gap-6">
-        <label className="text-white/70 font-['Nunito'] text-sm">Mês:</label>
-        <select
-          value={selectedMonth}
-          onChange={(e) => setSelectedMonth(Number(e.target.value))}
-          className={`${isLight ? 'bg-white border-[#cfe4dc] text-[#0f6d58]' : 'bg-[#2b2b2b] border-white/20 text-white'} border rounded-lg px-4 py-2 font-['Nunito'] focus:outline-none focus:border-[#017158]`}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-6">
+        <div className="flex items-center gap-4">
+          <label className="text-white/70 font-['Nunito'] text-sm">Mês:</label>
+          <select
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(Number(e.target.value))}
+            className={`${isLight ? 'bg-white border-[#cfe4dc] text-[#0f6d58]' : 'bg-[#2b2b2b] border-white/20 text-white'} border rounded-lg px-4 py-2 font-['Nunito'] focus:outline-none focus:border-[#017158]`}
+          >
+            {MONTHS.map((month, idx) => (
+              <option key={idx} value={idx + 1}>
+                {month}
+              </option>
+            ))}
+          </select>
+        </div>
+        <button
+          type="button"
+          onClick={handleDownloadPdf}
+          disabled={displayItems.length === 0}
+          className="rounded-xl bg-[#017158] px-4 py-2 text-sm font-['Nunito'] text-white hover:bg-[#01906f] transition-colors disabled:opacity-50"
         >
-          {MONTHS.map((month, idx) => (
-            <option key={idx} value={idx + 1}>
-              {month}
-            </option>
-          ))}
-        </select>
+          Baixar PDF
+        </button>
       </div>
 
       {/* Abas */}

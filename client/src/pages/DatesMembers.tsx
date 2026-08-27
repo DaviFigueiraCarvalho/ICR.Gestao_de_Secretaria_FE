@@ -7,6 +7,7 @@ import { buildLocalChurchFallback, getScopeLevel } from '../lib/scope-access';
 import { isPermissionError } from '@/lib/utils';
 import { formatDateOnly, parseDateOnly } from '../lib/date-utils';
 import PermissionDeniedError from '../components/PermissionDeniedError';
+import { downloadTablePdf } from '../lib/pdf-export';
 
 interface MemberBirthday {
   id?: number;
@@ -294,6 +295,29 @@ export default function DatasMembers() {
 
   const displayItems = getDisplayItems();
 
+  const handleDownloadPdf = () => {
+    const activeTabLabel = TABS.find((tab) => tab.id === activeTab)?.label ?? '';
+    const churchName = scopedChurches.find((church) => church.id === selectedChurch)?.name || '';
+
+    downloadTablePdf({
+      fileName: `datas-membros-${MONTHS[selectedMonth - 1].toLowerCase()}.pdf`,
+      title: 'Datas de Membros',
+      subtitle: [activeTabLabel, MONTHS[selectedMonth - 1], churchName].filter(Boolean).join(' - '),
+      columns: [
+        { header: 'Nome', widthFraction: 0.4, align: 'left' },
+        { header: 'Célula', widthFraction: 0.35, align: 'left' },
+        { header: 'Dia', widthFraction: 0.1, align: 'center' },
+        { header: 'Tipo', widthFraction: 0.15, align: 'center' },
+      ],
+      rows: displayItems.map((item) => [
+        item.name,
+        item.cellName || '—',
+        getDayString(item.date),
+        item.type === 'birthday' ? 'Aniversário' : 'Casamento',
+      ]),
+    });
+  };
+
   if (error && !isLoading) {
     if (isPermissionError(new Error(error))) {
       return (
@@ -317,7 +341,8 @@ export default function DatasMembers() {
   return (
     <ICRLayout title="Datas de Membros">
       {/* Seletores */}
-      <div className="mb-6 flex flex-wrap items-center gap-6">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-6">
+        <div className="flex flex-wrap items-center gap-6">
         {!isLocalScope && (
           <div className="flex items-center gap-4">
             <label className="text-white/70 font-['Nunito'] text-sm">Igreja:</label>
@@ -350,6 +375,15 @@ export default function DatasMembers() {
             ))}
           </select>
         </div>
+        </div>
+        <button
+          type="button"
+          onClick={handleDownloadPdf}
+          disabled={displayItems.length === 0}
+          className="rounded-xl bg-[#017158] px-4 py-2 text-sm font-['Nunito'] text-white hover:bg-[#01906f] transition-colors disabled:opacity-50"
+        >
+          Baixar PDF
+        </button>
       </div>
 
       {/* Abas */}

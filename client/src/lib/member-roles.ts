@@ -49,6 +49,12 @@ export const getMemberRoleValue = (value: unknown): number | '' => {
   return '';
 };
 
+export const getMinisterRolePrefix = (role?: number): string => {
+  if (role === PASTOR_ROLE) return 'Pr. ';
+  if (role === PRESBITERO_ROLE) return 'Pb. ';
+  return '';
+};
+
 export const getMemberRoleLabel = (role: unknown, roleName?: string): string => {
   if (roleName?.trim()) return roleName;
 
